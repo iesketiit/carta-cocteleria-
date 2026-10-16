@@ -1,0 +1,9 @@
+{
+  "name": "403 · Caja y Barra",
+  "short_name": "403 Barra",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#070405",
+  "theme_color": "#070405",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}

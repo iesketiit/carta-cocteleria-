@@ -1,0 +1,57 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ink: #070405;
+  --color-wine: #722f37;
+  --color-wine-bright: #9b3b46;
+  --color-gold: #c9a96e;
+  --color-gold-soft: #e8cf8f;
+  --color-cream: #f3e7cf;
+  --font-sans: 'Poppins', system-ui, sans-serif;
+  --font-display: 'Marcellus', Georgia, serif;
+}
+
+html, body, #root {
+  min-height: 100%;
+  background: #070405;
+  color: #f3e7cf;
+  font-family: var(--font-sans);
+  -webkit-tap-highlight-color: transparent;
+}
+
+input, select, textarea, button { font: inherit; }
+
+.card {
+  border: 1px solid rgba(201, 169, 110, 0.2);
+  background: linear-gradient(180deg, #160809 0%, #0b0405 100%);
+  border-radius: 1rem;
+}
+.input {
+  width: 100%;
+  padding: 0.75rem 0.9rem;
+  border-radius: 0.75rem;
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(201, 169, 110, 0.25);
+  color: #f3e7cf;
+  outline: none;
+}
+.input:focus { border-color: #c9a96e; }
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 0.75rem;
+  padding: 0.8rem 1.2rem;
+  font-weight: 600;
+  transition: all 0.15s;
+  cursor: pointer;
+}
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-gold { background: #722f37; border: 1px solid #c9a96e; color: #f3e7cf; }
+.btn-gold:hover:not(:disabled) { background: #9b3b46; }
+.btn-ghost { border: 1px solid rgba(201, 169, 110, 0.3); color: #e8cf8f; background: rgba(0, 0, 0, 0.4); }
+.btn-ghost:hover:not(:disabled) { border-color: #c9a96e; }
+.chip { border: 1px solid rgba(201, 169, 110, 0.3); border-radius: 999px; padding: 0.55rem 1rem; font-size: 0.85rem; white-space: nowrap; }
+.chip-on { background: #722f37; border-color: #c9a96e; color: #f3e7cf; }
+.font-display { font-family: var(--font-display); letter-spacing: 0.08em; }
