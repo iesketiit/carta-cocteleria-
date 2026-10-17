@@ -34,6 +34,7 @@ const ERRORS: Record<string, string> = {
   RADICADO_MISMATCH: 'El radicado no coincide. Pídele que te muestre su mensaje de WhatsApp.',
   RECIPE_ML_REQUIRED: 'Un cóctel o shot necesita al menos un licor con sus ml por trago.',
   BOTTLE_ML_REQUIRED: 'Escribe cuántos ml trae la botella.',
+  BOTTLE_REQUIRED: 'Elige una botella real del inventario (o crea una con sus ml).',
   INVALID_IMAGE: 'Esa foto no es válida. Súbela de nuevo desde aquí.',
   ORDER_NOT_FOUND: 'Ese pedido no existe.',
   VOID_NOT_ALLOWED: 'Ya no se puede anular: el bartender lo entregó o pasaron más de 15 minutos. Pide ayuda al administrador.',

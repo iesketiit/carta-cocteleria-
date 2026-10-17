@@ -71,6 +71,71 @@ const emptyProduct = (): BarProduct => ({
   ingredients: [{ item_id: '', ml: 60 }],
 });
 
+// Crear una botella sin salir del producto: nombre + ml (obligatorios).
+const QuickBottle: React.FC<{
+  event: EventLite;
+  spirit: string;
+  reload: () => void;
+  onCreated: (id: string) => void;
+  onClose: () => void;
+}> = ({ event, spirit, reload, onCreated, onClose }) => {
+  const [name, setName] = useState('');
+  const [ml, setMl] = useState(0);
+  const [price, setPrice] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const create = async () => {
+    setBusy(true);
+    setErr('');
+    const { data, error } = await supabase.rpc('bar_save_item', {
+      p_event_id: event.id,
+      p_id: null,
+      p_name: name,
+      p_spirit: spirit,
+      p_bottle_ml: ml,
+      p_bottle_price: price ? Number(price) : null,
+      p_active: true,
+    });
+    setBusy(false);
+    if (error) return setErr(errText(error));
+    reload();
+    onCreated(data as string);
+    onClose();
+  };
+  return (
+    <div className="rounded-xl border border-gold/40 bg-black/40 p-3 space-y-2">
+      <p className="text-sm text-gold-soft">Nueva botella</p>
+      <input className="input" placeholder="Ej. Jack Daniel's" value={name} onChange={e => setName(e.target.value)} />
+      <div className="flex gap-2 items-center">
+        <input
+          className="input !w-32"
+          inputMode="numeric"
+          placeholder="ml (ej. 750)"
+          value={ml ? String(ml) : ''}
+          onChange={e => setMl(Number(e.target.value.replace(/\D/g, '')) || 0)}
+        />
+        <span className="text-xs text-cream/50">ml que trae la botella (obligatorio)</span>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {[375, 700, 750, 1000].map(v => (
+          <button key={v} type="button" className={`chip ${ml === v ? 'chip-on' : ''}`} onClick={() => setMl(v)}>
+            {v} ml
+          </button>
+        ))}
+      </div>
+      {err && <p className="text-sm text-red-300">{err}</p>}
+      <div className="flex gap-2">
+        <button className="btn btn-gold !py-2 text-sm" disabled={busy || !name.trim() || ml <= 0} onClick={create}>
+          {busy ? 'Creando…' : 'Crear botella'}
+        </button>
+        <button className="btn btn-ghost !py-2 text-sm" onClick={onClose}>
+          Cancelar
+        </button>
+      </div>
+    </div>
+  );
+};
+
 const CartaTab: React.FC<{ event: EventLite; products: BarProduct[]; items: BarItem[]; reload: () => void; goItems: () => void }> = ({
   event,
   products,
@@ -85,6 +150,10 @@ const CartaTab: React.FC<{ event: EventLite; products: BarProduct[]; items: BarI
   const [msg, setMsg] = useState('');
   const [filter, setFilter] = useState('todos');
   const [uploading, setUploading] = useState(false);
+  const [quick, setQuick] = useState(false);
+  useEffect(() => {
+    if (!form) setQuick(false);
+  }, [form]);
 
   const pickImage = async (file: File | undefined) => {
     if (!file || !form) return;
@@ -220,16 +289,30 @@ const CartaTab: React.FC<{ event: EventLite; products: BarProduct[]; items: BarI
         </div>
 
         {form.kind === 'botella' ? (
-          <Field label="¿Qué botella del inventario se vende?">
-            <select className="input" value={form.bottle_item_id ?? ''} onChange={e => set({ bottle_item_id: e.target.value || null })}>
-              <option value="">— Elige —</option>
-              {items.map(i => (
-                <option key={i.id} value={i.id}>
-                  {i.name}
-                </option>
-              ))}
-            </select>
-          </Field>
+          <div className="space-y-2">
+            <Field label="¿Qué botella del inventario se vende?">
+              <select className="input" value={form.bottle_item_id ?? ''} onChange={e => set({ bottle_item_id: e.target.value || null })}>
+                <option value="">— Elige —</option>
+                {items.map(i => (
+                  <option key={i.id} value={i.id}>
+                    {i.name} · botella de {i.bottle_ml} ml
+                  </option>
+                ))}
+              </select>
+            </Field>
+            {(() => {
+              const it = items.find(x => x.id === form.bottle_item_id);
+              return it ? <p className="text-[11px] text-cream/50">Se vende la botella entera de {it.bottle_ml} ml.</p> : null;
+            })()}
+            {!form.bottle_item_id && <p className="text-sm text-amber-200">Elige una botella real (o crea una abajo con sus ml) para poder guardar.</p>}
+            {quick ? (
+              <QuickBottle event={event} spirit={form.spirit} reload={reload} onClose={() => setQuick(false)} onCreated={id => set({ bottle_item_id: id })} />
+            ) : (
+              <button className="btn btn-ghost !py-2 text-sm" onClick={() => setQuick(true)}>
+                <Plus className="w-4 h-4" /> Crear botella nueva (con sus ml)
+              </button>
+            )}
+          </div>
         ) : (
           <div>
             <p className="text-sm text-gold-soft mb-0.5">¿Con qué botella se hace y cuántos ml lleva cada trago?</p>
@@ -238,15 +321,31 @@ const CartaTab: React.FC<{ event: EventLite; products: BarProduct[]; items: BarI
             </p>
             {items.length === 0 && (
               <div className="rounded-xl border border-amber-400/50 bg-amber-950/30 p-3 mb-2">
-                <p className="text-sm text-amber-200">Todavía no hay botellas cargadas. Sin una botella real (con sus ml) no puedes seguir.</p>
-                <button className="btn btn-gold !py-2 text-sm mt-2" onClick={goItems}>
-                  Cargar mis botellas en "Licores"
+                <p className="text-sm text-amber-200">Todavía no hay botellas cargadas. Crea una abajo (con sus ml) o cárgalas en "Licores"; sin una botella real no puedes seguir.</p>
+                <button className="text-xs text-gold underline mt-1" onClick={goItems}>
+                  Ir a "Licores"
                 </button>
               </div>
             )}
-            {items.length > 0 && (
-              <button className="text-xs text-gold underline mb-2" onClick={goItems}>
-                ¿No está tu botella? Cárgala en "Licores"
+            {quick ? (
+              <div className="mb-2">
+                <QuickBottle
+                  event={event}
+                  spirit={form.spirit}
+                  reload={reload}
+                  onClose={() => setQuick(false)}
+                  onCreated={id => {
+                    const rows = form.ingredients ?? [];
+                    const empty = rows.findIndex(r => !r.item_id);
+                    set({
+                      ingredients: empty >= 0 ? rows.map((r, i) => (i === empty ? { ...r, item_id: id } : r)) : [...rows, { item_id: id, ml: 60 }],
+                    });
+                  }}
+                />
+              </div>
+            ) : (
+              <button className="btn btn-ghost !py-2 text-sm mb-2" onClick={() => setQuick(true)}>
+                <Plus className="w-4 h-4" /> Crear botella nueva (con sus ml)
               </button>
             )}
             {(form.ingredients ?? []).map((ing, idx) => (
@@ -324,7 +423,7 @@ const CartaTab: React.FC<{ event: EventLite; products: BarProduct[]; items: BarI
         )}
         {msg && <p className="text-sm text-red-300">{msg}</p>}
         <div className="flex gap-2">
-          <button className="btn btn-gold" disabled={busy || uploading || !form.name.trim() || needsMl(form)} onClick={save}>
+          <button className="btn btn-gold" disabled={busy || uploading || !form.name.trim() || needsMl(form) || (form.kind === 'botella' && !form.bottle_item_id)} onClick={save}>
             <Save className="w-4 h-4" /> {busy ? 'Guardando…' : 'Guardar'}
           </button>
           <button className="btn btn-ghost" onClick={() => setForm(null)}>

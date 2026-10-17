@@ -7,6 +7,7 @@
 --      Queda registrada como "anulado" (quién y cuándo) para el cierre.
 --      Si el bartender aún no la entregaba, el inventario vuelve; si ya la
 --      entregó, el licor sí se gastó y el inventario no se toca.
+--   1b) un producto tipo botella debe apuntar a una botella real.
 --   5) bar_save_item: la botella siempre lleva sus ml.
 --   4) bar_delete_product: eliminar productos de la carta.
 --   3) Finanzas (global en King): el rol de finanzas puede leer las ventas de
@@ -42,6 +43,11 @@ begin
   end if;
   if v_image is not null and v_image !~ '^https://[^/]+/storage/v1/object/public/bar-images/' then
     raise exception 'INVALID_IMAGE' using errcode = 'P0001';
+  end if;
+
+  -- Producto tipo botella: debe ser una botella real del inventario.
+  if p_kind = 'botella' and p_bottle_item_id is null then
+    raise exception 'BOTTLE_REQUIRED' using errcode = 'P0001';
   end if;
 
   -- Cóctel / shot: al menos un licor con ml (para que la botellita se gaste).
