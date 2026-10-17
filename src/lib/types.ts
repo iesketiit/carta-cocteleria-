@@ -34,6 +34,7 @@ export interface BarProduct {
   bottle_item_id: string | null;
   recipe: string | null;
   description: string | null;
+  image_url?: string | null;
   active: boolean;
   sort: number;
   ingredients?: { item_id: string; ml: number }[];
@@ -47,3 +48,15 @@ export interface CartLine {
 }
 
 export type PayMethod = 'efectivo' | 'transferencia' | 'deuna';
+
+// Nivel de una botella de cocteleria (viene de bar_bottle_levels).
+export interface BottleLevel {
+  itemId: string;
+  name: string;
+  spirit: string;
+  bottleMl: number;
+  remainingMl: number;
+  currentPct: number;
+  spareBottles: number;
+  status: 'ok' | 'low' | 'empty';
+}

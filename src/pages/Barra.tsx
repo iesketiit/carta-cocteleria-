@@ -4,6 +4,8 @@ import { Shell } from '../components/Shell';
 import { useCatalog } from '../lib/catalog';
 import { enqueueOrder, syncOrders, useOrderQueue, discardOrder } from '../lib/offlineOrders';
 import { supabase } from '../lib/supabase';
+import { useBottleLevels } from '../lib/bottles';
+import { BottleAlerts, BottleShelf } from '../components/BottleMeter';
 import { CartLine, EventLite, PayMethod } from '../lib/types';
 import { money, SPIRITS, PAY_LABEL, uuid } from '../lib/format';
 
@@ -23,6 +25,7 @@ const SECTION_LABEL: Record<Section, string> = { coctel: 'Cócteles y shots', bo
 export const Barra: React.FC<Props> = ({ event, events, eventId, onEvent, online, onBack }) => {
   const { products, reload, loading } = useCatalog(event.id);
   const { pending, failed } = useOrderQueue();
+  const { levels } = useBottleLevels(event.id);
   const [section, setSection] = useState<Section>('coctel');
   const [spirit, setSpirit] = useState<string>('todos');
   const [cart, setCart] = useState<CartLine[]>([]);
@@ -102,6 +105,8 @@ export const Barra: React.FC<Props> = ({ event, events, eventId, onEvent, online
         ) : null
       }
     >
+      <BottleAlerts levels={levels} />
+
       {failed.length > 0 && (
         <div className="card p-3 mb-3 border-red-400/40 text-sm">
           <p className="flex items-center gap-2 text-red-200">
@@ -170,6 +175,8 @@ export const Barra: React.FC<Props> = ({ event, events, eventId, onEvent, online
             </div>
           )}
 
+          <BottleShelf levels={levels} />
+
           {products.length === 0 ? (
             <div className="card p-6 text-center text-sm text-cream/60">
               Aún no hay carta para {event.city}. El administrador la carga en "Inventario y carta".
@@ -178,18 +185,33 @@ export const Barra: React.FC<Props> = ({ event, events, eventId, onEvent, online
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
               {visible.map(p => {
                 const inCart = cart.find(l => l.productId === p.id)?.qty ?? 0;
+                // Licores de este trago que se acabaron en cocteleria.
+                const outOf = (p.ingredients ?? [])
+                  .map(i => levels.find(b => b.itemId === i.item_id && b.status === 'empty'))
+                  .filter((b): b is NonNullable<typeof b> => !!b);
                 return (
                   <button
                     key={p.id}
                     onClick={() => add(p.id, p.name, p.price, 1)}
-                    className={`card p-3.5 text-left min-h-[96px] flex flex-col justify-between active:scale-[0.98] transition ${
-                      inCart ? 'border-gold' : ''
-                    }`}
+                    className={`card relative overflow-hidden text-left flex flex-col justify-end active:scale-[0.98] transition ${
+                      p.image_url ? 'min-h-[150px]' : 'min-h-[96px] p-3.5 justify-between'
+                    } ${inCart ? 'border-gold' : ''}`}
                   >
-                    <span className="font-semibold leading-tight">{p.name}</span>
-                    <span className="flex items-end justify-between mt-2">
-                      <span className="text-gold-soft font-display text-lg">{money(p.price, event.currency)}</span>
-                      {inCart > 0 && <span className="text-xs bg-wine px-2 py-0.5 rounded-full">×{inCart}</span>}
+                    {p.image_url && (
+                      <>
+                        <img src={p.image_url} alt="" loading="lazy" className="absolute inset-0 w-full h-full object-cover" />
+                        <span className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-black/5" />
+                      </>
+                    )}
+                    <span className={`relative flex flex-col ${p.image_url ? 'p-3' : 'flex-1 justify-between'}`}>
+                      <span className="font-semibold leading-tight drop-shadow">{p.name}</span>
+                      {outOf.length > 0 && (
+                        <span className="text-[10px] text-red-200 mt-0.5">Sin {outOf.map(b => b.name).join(', ')}</span>
+                      )}
+                      <span className="flex items-end justify-between mt-2">
+                        <span className="text-gold-soft font-display text-lg">{money(p.price, event.currency)}</span>
+                        {inCart > 0 && <span className="text-xs bg-wine px-2 py-0.5 rounded-full">×{inCart}</span>}
+                      </span>
                     </span>
                   </button>
                 );
