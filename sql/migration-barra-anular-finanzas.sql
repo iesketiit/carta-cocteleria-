@@ -7,6 +7,7 @@
 --      Queda registrada como "anulado" (quién y cuándo) para el cierre.
 --      Si el bartender aún no la entregaba, el inventario vuelve; si ya la
 --      entregó, el licor sí se gastó y el inventario no se toca.
+--   5) bar_save_item: la botella siempre lleva sus ml.
 --   4) bar_delete_product: eliminar productos de la carta.
 --   3) Finanzas (global en King): el rol de finanzas puede leer las ventas de
 --      la barra y ver el total cobrado en la puerta de /envivo.
@@ -162,3 +163,35 @@ begin
 end;
 $$;
 grant execute on function public.bar_delete_product(uuid) to authenticated;
+
+-- 5) Una botella SIEMPRE lleva sus ml (tamaño real). Sin ml no se guarda.
+create or replace function public.bar_save_item(
+  p_event_id uuid, p_id uuid, p_name text, p_spirit text, p_bottle_ml int, p_bottle_price numeric, p_active boolean
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_id uuid := coalesce(p_id, gen_random_uuid());
+begin
+  if not public.has_staff_role('inventario', p_event_id) then
+    raise exception 'NOT_AUTHORIZED' using errcode = 'P0001';
+  end if;
+  if coalesce(trim(p_name), '') = '' then
+    raise exception 'INVALID_PRODUCT' using errcode = 'P0001';
+  end if;
+  if p_bottle_ml is null or p_bottle_ml <= 0 then
+    raise exception 'BOTTLE_ML_REQUIRED' using errcode = 'P0001';
+  end if;
+  insert into public.bar_items (id, event_id, name, spirit, bottle_ml, bottle_price, active)
+  values (v_id, p_event_id, trim(p_name), coalesce(nullif(p_spirit, ''), 'otro'), p_bottle_ml, p_bottle_price, coalesce(p_active, true))
+  on conflict (id) do update set
+    name = excluded.name, spirit = excluded.spirit, bottle_ml = excluded.bottle_ml,
+    bottle_price = excluded.bottle_price, active = excluded.active
+  where public.bar_items.event_id = p_event_id;
+  return v_id;
+end;
+$$;
+grant execute on function public.bar_save_item(uuid, uuid, text, text, int, numeric, boolean) to authenticated;
