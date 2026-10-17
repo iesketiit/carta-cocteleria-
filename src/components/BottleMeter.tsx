@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { AlertTriangle, ChevronDown, Wine } from 'lucide-react';
-import { BottleLevel } from '../lib/types';
+import { BarProduct, BottleLevel } from '../lib/types';
+import { remainingFromLevels, servingsForItem, servingsText } from '../lib/servings';
 
 const COLOR = { ok: '#c9a96e', low: '#f59e0b', empty: '#ef4444' } as const;
 
@@ -58,9 +59,10 @@ const TakeButton: React.FC<{ onTake: () => void; busy?: boolean }> = ({ onTake, 
 // botón "Ya tomé otra botella" (onTake).
 export const BottleAlerts: React.FC<{
   levels: BottleLevel[];
+  products?: BarProduct[];
   onTake?: (itemId: string, name: string) => void;
   busyId?: string;
-}> = ({ levels, onTake, busyId }) => {
+}> = ({ levels, products = [], onTake, busyId }) => {
   const bad = levels.filter(b => b.status !== 'ok');
   if (bad.length === 0) return null;
   return (
@@ -81,6 +83,11 @@ export const BottleAlerts: React.FC<{
                 ? `Hay que tomar otra botella${b.remainingMl > 0 ? ` (solo quedan ${currentMl(b)} ml)` : ''}.`
                 : `Trae una nueva botella (quedan ${currentMl(b)} de ${b.bottleMl} ml).`}
             </p>
+            {b.status === 'low' &&
+              (() => {
+                const t = servingsText(servingsForItem(b.itemId, products, remainingFromLevels(levels)));
+                return t ? <p className="text-sm text-amber-200 mt-0.5">Todavía alcanza para: {t}</p> : null;
+              })()}
             {onTake && <TakeButton busy={busyId === b.itemId} onTake={() => onTake(b.itemId, b.name)} />}
           </div>
         </div>
@@ -99,12 +106,15 @@ export interface BottleNeed {
 export const BottleNeeds: React.FC<{
   needs: BottleNeed[];
   levels: BottleLevel[];
+  products?: BarProduct[];
   names: Record<string, string>;
   onTake?: (itemId: string, name: string) => void;
   busyId?: string;
   title?: string;
-}> = ({ needs, levels, names, onTake, busyId, title = 'Botellas de este pedido' }) => {
+}> = ({ needs, levels, products = [], names, onTake, busyId, title = 'Botellas de este pedido' }) => {
   if (needs.length === 0) return null;
+  const used = Object.fromEntries(needs.map(n => [n.itemId, n.ml]));
+  const afterOrder = remainingFromLevels(levels, used);
   return (
     <div className="rounded-xl border border-gold/25 bg-black/30 p-3 space-y-2.5">
       <p className="text-xs text-cream/60">{title}</p>
@@ -124,9 +134,24 @@ export const BottleNeeds: React.FC<{
                 {' · '}este pedido gasta {Math.round(n.ml)} ml
               </p>
               {enough ? (
-                <p className={`text-xs mt-0.5 ${status === 'low' ? 'text-amber-300' : 'text-emerald-300'}`}>
-                  {status === 'low' ? 'Alcanza, pero queda poco: trae otra botella pronto' : 'Alcanza'}
-                </p>
+                (() => {
+                  // Qué alcanza todavía DESPUÉS de este pedido.
+                  const text = servingsText(servingsForItem(n.itemId, products, afterOrder));
+                  const noMore = products.length > 0 && !text;
+                  return (
+                    <>
+                      <p className={`text-xs mt-0.5 ${status === 'low' || noMore ? 'text-amber-300' : 'text-emerald-300'}`}>
+                        {noMore
+                          ? 'Alcanza para este pedido, pero después ya no alcanza para otro trago'
+                          : status === 'low'
+                          ? 'Alcanza, pero queda poco: trae otra botella pronto'
+                          : 'Alcanza'}
+                      </p>
+                      {text && <p className="text-xs text-cream/70">Después alcanza para: {text}</p>}
+                      {noMore && onTake && <TakeButton busy={busyId === n.itemId} onTake={() => onTake(n.itemId, name)} />}
+                    </>
+                  );
+                })()
               ) : (
                 <>
                   <p className="text-xs mt-0.5 text-red-300 font-semibold">No alcanza: hay que tomar otra botella</p>
@@ -142,7 +167,7 @@ export const BottleNeeds: React.FC<{
 };
 
 // Todas las botellitas de cocteleria, para ver de un vistazo cómo van.
-export const BottleShelf: React.FC<{ levels: BottleLevel[]; defaultOpen?: boolean }> = ({ levels, defaultOpen = true }) => {
+export const BottleShelf: React.FC<{ levels: BottleLevel[]; products?: BarProduct[]; defaultOpen?: boolean }> = ({ levels, products = [], defaultOpen = true }) => {
   const [open, setOpen] = useState(defaultOpen);
   if (levels.length === 0) return null;
   return (
@@ -161,6 +186,11 @@ export const BottleShelf: React.FC<{ levels: BottleLevel[]; defaultOpen?: boolea
                 {b.status === 'empty' ? 'Vacía' : `${currentMl(b)} / ${b.bottleMl} ml`}
               </p>
               {b.spareBottles > 0 && <p className="text-[10px] text-cream/50">+{b.spareBottles} de reserva</p>}
+              {products.length > 0 && (
+                <p className="text-[10px] text-cream/60 leading-tight mt-0.5">
+                  {servingsText(servingsForItem(b.itemId, products, remainingFromLevels(levels))) ?? 'No alcanza para otro trago'}
+                </p>
+              )}
             </div>
           ))}
         </div>

@@ -138,13 +138,13 @@ export const Bartender: React.FC<Props> = ({ event, events, eventId, onEvent, on
         </button>
       </div>
 
-      <BottleAlerts levels={levels} onTake={takeBottle} busyId={busy} />
+      <BottleAlerts levels={levels} products={products} onTake={takeBottle} busyId={busy} />
 
       {msg && <p className={`text-sm mb-3 ${msg.ok ? 'text-emerald-300' : 'text-red-300'}`}>{msg.text}</p>}
 
       {tab === 'pedidos' && (
         <>
-          <BottleShelf levels={levels} />
+          <BottleShelf levels={levels} products={products} />
           {!online && (
             <p className="text-sm text-red-200 mb-3">Sin señal: los pedidos nuevos no llegan. El cajero te los dicta.</p>
           )}
@@ -179,7 +179,7 @@ export const Bartender: React.FC<Props> = ({ event, events, eventId, onEvent, on
                     ))}
                   </ul>
                   <div className="mt-3">
-                    <BottleNeeds needs={needsOf(o)} levels={levels} names={itemNames} onTake={takeBottle} busyId={busy} />
+                    <BottleNeeds needs={needsOf(o)} levels={levels} products={products} names={itemNames} onTake={takeBottle} busyId={busy} />
                   </div>
                   <button className="btn btn-gold w-full mt-4" disabled={busy === o.id} onClick={() => deliver(o.id)}>
                     <CheckCircle2 className="w-5 h-5" /> Entregado
@@ -223,7 +223,7 @@ export const Bartender: React.FC<Props> = ({ event, events, eventId, onEvent, on
 
       {tab === 'botella' && (
         <div className="card p-4">
-          <BottleShelf levels={levels} defaultOpen />
+          <BottleShelf levels={levels} products={products} defaultOpen />
           <p className="text-sm text-cream/70 mb-3">
             Si se acabó el licor de cocteleria y tomas una botella de las de venta, regístralo aquí. Así el inventario cuadra.
           </p>
