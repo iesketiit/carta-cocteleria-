@@ -7,6 +7,7 @@
 --      Queda registrada como "anulado" (quién y cuándo) para el cierre.
 --      Si el bartender aún no la entregaba, el inventario vuelve; si ya la
 --      entregó, el licor sí se gastó y el inventario no se toca.
+--   4) bar_delete_product: eliminar productos de la carta.
 --   3) Finanzas (global en King): el rol de finanzas puede leer las ventas de
 --      la barra y ver el total cobrado en la puerta de /envivo.
 --
@@ -138,3 +139,26 @@ begin
 end;
 $$;
 grant execute on function public.finance_envivo_totals() to authenticated;
+
+-- 4) Eliminar un producto de la carta (inventario/admin). Los pedidos ya
+--    vendidos conservan su nombre y precio; la receta se borra con el producto.
+create or replace function public.bar_delete_product(p_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_event uuid;
+begin
+  select event_id into v_event from public.bar_products where id = p_id;
+  if v_event is null then
+    return;
+  end if;
+  if not public.has_staff_role('inventario', v_event) then
+    raise exception 'NOT_AUTHORIZED' using errcode = 'P0001';
+  end if;
+  delete from public.bar_products where id = p_id;
+end;
+$$;
+grant execute on function public.bar_delete_product(uuid) to authenticated;
