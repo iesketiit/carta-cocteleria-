@@ -11,7 +11,13 @@ export const Bottle: React.FC<{ pct: number; status: BottleLevel['status']; size
   const fillH = (Math.max(0, Math.min(100, pct)) / 100) * 66;
   const id = React.useId();
   return (
-    <svg width={size * 0.5} height={size} viewBox="0 0 50 100" aria-hidden className={status === 'empty' ? 'opacity-70' : ''}>
+    <svg
+      width={size * 0.5}
+      height={size}
+      viewBox="0 0 50 100"
+      aria-hidden
+      className={status === 'empty' ? 'opacity-70' : status === 'low' ? 'bottle-pulse' : ''}
+    >
       <defs>
         <clipPath id={id}>
           <path d="M19 4h12v18c0 5 9 8 9 20v50a5 5 0 0 1-5 5H15a5 5 0 0 1-5-5V42c0-12 9-15 9-20z" />
@@ -19,7 +25,13 @@ export const Bottle: React.FC<{ pct: number; status: BottleLevel['status']; size
       </defs>
       <g clipPath={`url(#${id})`}>
         <rect x="0" y="0" width="50" height="100" fill="#0d0809" />
-        <rect x="0" y={96 - fillH} width="50" height={fillH} fill={color} opacity="0.9" />
+        {/* El licor baja suave cada vez que se vende un trago. */}
+        <g style={{ transform: `translateY(${96 - fillH}px)`, transition: 'transform 1.2s cubic-bezier(.4,0,.2,1)' }}>
+          <rect x="-10" y="0" width="70" height="70" fill={color} opacity="0.9" />
+          {fillH > 0 && (
+            <path className="bottle-wave" d="M-10 0 q8.75 -4 17.5 0 t17.5 0 t17.5 0 t17.5 0 t17.5 0 V6 H-10z" fill={color} opacity="0.6" />
+          )}
+        </g>
       </g>
       <path
         d="M19 4h12v18c0 5 9 8 9 20v50a5 5 0 0 1-5 5H15a5 5 0 0 1-5-5V42c0-12 9-15 9-20z"
