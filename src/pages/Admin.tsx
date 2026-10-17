@@ -68,7 +68,7 @@ const emptyProduct = (): BarProduct => ({
   image_url: null,
   active: true,
   sort: 0,
-  ingredients: [],
+  ingredients: [{ item_id: '', ml: 60 }],
 });
 
 const CartaTab: React.FC<{ event: EventLite; products: BarProduct[]; items: BarItem[]; reload: () => void }> = ({
@@ -123,6 +123,20 @@ const CartaTab: React.FC<{ event: EventLite; products: BarProduct[]; items: BarI
     }
   };
 
+  const remove = async () => {
+    if (!form?.id) return;
+    if (!confirm(`¿Eliminar "${form.name}" de la carta? Los pedidos ya vendidos se conservan.`)) return;
+    setBusy(true);
+    setMsg('');
+    const { error } = await supabase.rpc('bar_delete_product', { p_id: form.id });
+    setBusy(false);
+    if (error) setMsg(errText(error));
+    else {
+      setForm(null);
+      reload();
+    }
+  };
+
   const needsMl = (p: Pick<BarProduct, 'kind' | 'ingredients'>) =>
     (p.kind === 'coctel' || p.kind === 'shot') && !(p.ingredients ?? []).some(i => i.item_id && Number(i.ml) > 0);
 
@@ -169,7 +183,10 @@ const CartaTab: React.FC<{ event: EventLite; products: BarProduct[]; items: BarI
         </div>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Tipo">
-            <select className="input" value={form.kind} onChange={e => set({ kind: e.target.value as BarProduct['kind'] })}>
+            <select className="input" value={form.kind} onChange={e => {
+                const kind = e.target.value as BarProduct['kind'];
+                set({ kind, ingredients: (form.ingredients ?? []).length || kind === 'botella' ? form.ingredients : [{ item_id: '', ml: 60 }] });
+              }}>
               {KINDS.map(k => (
                 <option key={k.key} value={k.key}>
                   {k.label}
@@ -212,7 +229,10 @@ const CartaTab: React.FC<{ event: EventLite; products: BarProduct[]; items: BarI
           </Field>
         ) : (
           <div>
-            <p className="text-xs text-cream/60 mb-1">Ingredientes que descuentan inventario (ml por trago)</p>
+            <p className="text-sm text-gold-soft mb-0.5">¿Cuántos ml de licor lleva cada trago?</p>
+            <p className="text-xs text-cream/60 mb-2">
+              Elige el licor y escribe los ml en la casilla de la derecha. Es obligatorio en cócteles y shots: con eso se gasta la botellita.
+            </p>
             {(form.ingredients ?? []).map((ing, idx) => (
               <div key={idx} className="flex gap-2 mb-2">
                 <select
@@ -241,7 +261,9 @@ const CartaTab: React.FC<{ event: EventLite; products: BarProduct[]; items: BarI
                     set({ ingredients: next });
                   }}
                   placeholder="ml"
+                  aria-label="ml por trago"
                 />
+                <span className="self-center text-xs text-cream/50 -ml-1">ml</span>
                 <button className="btn btn-ghost !px-3" onClick={() => set({ ingredients: (form.ingredients ?? []).filter((_, i) => i !== idx) })}>
                   <X className="w-4 h-4" />
                 </button>
@@ -279,6 +301,11 @@ const CartaTab: React.FC<{ event: EventLite; products: BarProduct[]; items: BarI
           <button className="btn btn-ghost" onClick={() => setForm(null)}>
             Cancelar
           </button>
+          {form.id && (
+            <button className="btn btn-ghost ml-auto text-red-300" disabled={busy} onClick={remove}>
+              <Trash2 className="w-4 h-4" /> Eliminar
+            </button>
+          )}
         </div>
       </div>
     );
@@ -309,7 +336,7 @@ const CartaTab: React.FC<{ event: EventLite; products: BarProduct[]; items: BarI
       )}
       <div className="grid sm:grid-cols-2 gap-2">
         {list.map(p => (
-          <button key={p.id} className={`card p-3 text-left flex gap-3 ${p.active ? '' : 'opacity-50'}`} onClick={() => setForm({ ...p })}>
+          <button key={p.id} className={`card p-3 text-left flex gap-3 ${p.active ? '' : 'opacity-50'}`} onClick={() => setForm({ ...p, ingredients: (p.ingredients ?? []).length || p.kind === 'botella' ? p.ingredients : [{ item_id: '', ml: 60 }] })}>
             {p.image_url && <img src={p.image_url} alt="" loading="lazy" className="w-14 h-14 rounded-lg object-cover shrink-0" />}
             <div className="flex-1 min-w-0">
             <div className="flex justify-between gap-2">
