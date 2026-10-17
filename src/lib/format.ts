@@ -34,6 +34,7 @@ export const ROLE_LABEL: Record<string, string> = {
   cajero_barra: 'Cajero de barra',
   bartender: 'Bartender',
   inventario: 'Inventario / admin de barra',
+  curador: 'Curador (acepta o rechaza en /envivo)',
 };
 
 export const uuid = (): string =>

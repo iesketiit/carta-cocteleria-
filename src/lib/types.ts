@@ -1,4 +1,4 @@
-export type StaffRole = 'caja_entradas' | 'cajero_barra' | 'bartender' | 'inventario';
+export type StaffRole = 'caja_entradas' | 'cajero_barra' | 'bartender' | 'inventario' | 'curador';
 
 export interface EventLite {
   id: string;

@@ -24,6 +24,15 @@ const ERRORS: Record<string, string> = {
   INVALID_PRODUCT: 'Revisa el nombre y el precio.',
   NOTE_REQUIRED: 'Escribe el motivo del ajuste.',
   INVALID_QTY: 'Cantidad no válida.',
+  REQUEST_NOT_FOUND: 'Esa solicitud ya no existe.',
+  ALREADY_DECIDED: 'Otra persona ya decidió esta solicitud.',
+  NOT_DECIDED: 'Esa solicitud todavía no está decidida.',
+  RADICADO_FAILED: 'No se pudo crear el radicado. Intenta de nuevo.',
+  ALREADY_PAID: 'Esta persona ya está cobrada.',
+  NOT_ACCEPTED: 'Esta persona no está aceptada.',
+  NOT_PAID: 'Este cobro ya no está marcado como cobrado.',
+  RADICADO_MISMATCH: 'El radicado no coincide. Pídele que te muestre su mensaje de WhatsApp.',
+  UNDO_NOT_ALLOWED: 'Solo se puede deshacer en los primeros 10 minutos, y quien cobró. Pide ayuda a un administrador.',
 };
 
 export const errText = (e: unknown, fallback = 'Algo salió mal. Intenta de nuevo.'): string => {

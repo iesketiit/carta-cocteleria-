@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Banknote, ChefHat, GlassWater, Settings2 } from 'lucide-react';
+import { Banknote, ChefHat, GlassWater, Settings2, UserCheck, HandCoins } from 'lucide-react';
 import { useAccess, can, myEvents } from './lib/access';
 import { readLocal, writeLocal } from './lib/store';
 import { Login } from './components/Login';
@@ -8,20 +8,24 @@ import { Caja } from './pages/Caja';
 import { Barra } from './pages/Barra';
 import { Bartender } from './pages/Bartender';
 import { Admin } from './pages/Admin';
+import { Curador } from './pages/Curador';
+import { Cobrar } from './pages/Cobrar';
 import { StaffRole } from './lib/types';
 
-type Route = '/' | '/caja' | '/barra' | '/bartender' | '/admin';
+type Route = '/' | '/caja' | '/barra' | '/bartender' | '/admin' | '/curador' | '/cobrar';
 
 const SECTIONS: { route: Route; role: StaffRole; title: string; desc: string; Icon: React.FC<{ className?: string }> }[] = [
   { route: '/barra', role: 'cajero_barra', title: 'Vender en barra', desc: 'Cócteles y botellas. Cobra y manda el pedido al bartender.', Icon: GlassWater },
   { route: '/bartender', role: 'bartender', title: 'Bartender', desc: 'Pedidos por preparar, recetas y "tomé otra botella".', Icon: ChefHat },
   { route: '/caja', role: 'caja_entradas', title: 'Caja de entradas', desc: 'Cobro en efectivo a personas aprobadas (ej. D\'VORA).', Icon: Banknote },
+  { route: '/curador', role: 'curador', title: 'Curaduría en vivo', desc: 'Acepta o rechaza las solicitudes de /envivo y manda el radicado.', Icon: UserCheck },
+  { route: '/cobrar', role: 'caja_entradas', title: 'Cobrar en vivo', desc: 'Cobra en efectivo a los aceptados de /envivo (con su radicado).', Icon: HandCoins },
   { route: '/admin', role: 'inventario', title: 'Inventario y carta', desc: 'Productos, recetas, botellas, cierres y personal.', Icon: Settings2 },
 ];
 
 const currentRoute = (): Route => {
   const p = window.location.pathname.replace(/\/+$/, '') || '/';
-  return (['/caja', '/barra', '/bartender', '/admin'].includes(p) ? p : '/') as Route;
+  return (['/caja', '/barra', '/bartender', '/admin', '/curador', '/cobrar'].includes(p) ? p : '/') as Route;
 };
 
 export const App: React.FC = () => {
@@ -86,6 +90,8 @@ export const App: React.FC = () => {
   if (view === '/caja') return <Caja {...shellProps} event={event} onBack={() => go('/')} />;
   if (view === '/barra') return <Barra {...shellProps} event={event} onBack={() => go('/')} />;
   if (view === '/bartender') return <Bartender {...shellProps} event={event} access={access} onBack={() => go('/')} />;
+  if (view === '/curador') return <Curador {...shellProps} event={event} onBack={() => go('/')} />;
+  if (view === '/cobrar') return <Cobrar {...shellProps} event={event} onBack={() => go('/')} />;
   if (view === '/admin') return <Admin {...shellProps} event={event} onBack={() => go('/')} />;
 
   return (
