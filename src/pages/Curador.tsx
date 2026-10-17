@@ -111,12 +111,21 @@ export const Curador: React.FC<Props> = ({ event, events, eventId, onEvent, onli
   const notify = async (id: string) => {
     setDecided(list => list.map(d => (d.id === id ? { ...d, wa: 'sending', waError: undefined } : d)));
     const { data, error: err } = await supabase.functions.invoke('envivo-notify', { body: { id } });
-    const failed = err || (data as { error?: string } | null)?.error;
+    // Si la función responde con error (502, 403…), supabase-js solo dice
+    // "non-2xx": se lee el cuerpo para mostrar el motivo real.
+    let detail = (data as { error?: string } | null)?.error || '';
+    if (err && !detail) {
+      try {
+        const body = await (err as { context?: Response }).context?.json();
+        detail = body?.error || '';
+      } catch {
+        /* sin cuerpo legible */
+      }
+    }
+    const failed = err || detail;
     setDecided(list =>
       list.map(d =>
-        d.id === id
-          ? { ...d, wa: failed ? 'error' : 'ok', waError: failed ? (data as { error?: string } | null)?.error || err?.message : undefined }
-          : d
+        d.id === id ? { ...d, wa: failed ? 'error' : 'ok', waError: failed ? detail || err?.message || 'No se pudo enviar.' : undefined } : d
       )
     );
   };
