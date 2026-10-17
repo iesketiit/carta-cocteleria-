@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Plus, Pencil, Save, X, RefreshCw, Trash2 } from 'lucide-react';
+import { Plus, Pencil, Save, X, RefreshCw, Trash2, ImagePlus } from 'lucide-react';
 import { Shell } from '../components/Shell';
 import { useCatalog } from '../lib/catalog';
 import { supabase, errText } from '../lib/supabase';
+import { uploadProductImage } from '../lib/images';
 import { BarItem, BarProduct, EventLite } from '../lib/types';
 import { KINDS, SPIRITS, money, spiritLabel, PAY_LABEL, ROLE_LABEL } from '../lib/format';
 
@@ -64,6 +65,7 @@ const emptyProduct = (): BarProduct => ({
   bottle_item_id: null,
   recipe: '',
   description: '',
+  image_url: null,
   active: true,
   sort: 0,
   ingredients: [],
@@ -79,6 +81,20 @@ const CartaTab: React.FC<{ event: EventLite; products: BarProduct[]; items: BarI
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
   const [filter, setFilter] = useState('todos');
+  const [uploading, setUploading] = useState(false);
+
+  const pickImage = async (file: File | undefined) => {
+    if (!file || !form) return;
+    setUploading(true);
+    setMsg('');
+    try {
+      const url = await uploadProductImage(event.id, file);
+      setForm(f => (f ? { ...f, image_url: url } : f));
+    } catch (e) {
+      setMsg((e as Error).message);
+    }
+    setUploading(false);
+  };
 
   const save = async () => {
     if (!form) return;
@@ -97,6 +113,7 @@ const CartaTab: React.FC<{ event: EventLite; products: BarProduct[]; items: BarI
       p_active: form.active,
       p_sort: Number(form.sort) || 0,
       p_ingredients: form.kind === 'botella' ? [] : (form.ingredients ?? []).map(i => ({ itemId: i.item_id, ml: i.ml })),
+      p_image_url: form.image_url || null,
     });
     setBusy(false);
     if (error) setMsg(errText(error));
@@ -116,6 +133,37 @@ const CartaTab: React.FC<{ event: EventLite; products: BarProduct[]; items: BarI
         <Field label="Nombre">
           <input className="input" value={form.name} onChange={e => set({ name: e.target.value })} placeholder="Ej. Whisky Sour" />
         </Field>
+        <div>
+          <p className="text-xs text-cream/60 mb-1">Foto (se ve en la barra y en las recetas)</p>
+          <div className="flex items-center gap-3">
+            {form.image_url ? (
+              <img src={form.image_url} alt="" className="w-24 h-24 rounded-xl object-cover border border-gold/30" />
+            ) : (
+              <div className="w-24 h-24 rounded-xl border border-dashed border-gold/30 flex items-center justify-center text-cream/30">
+                <ImagePlus className="w-6 h-6" />
+              </div>
+            )}
+            <div className="flex flex-col gap-2">
+              <label className={`btn btn-ghost !py-2 text-sm cursor-pointer ${uploading ? 'opacity-50 pointer-events-none' : ''}`}>
+                <ImagePlus className="w-4 h-4" /> {uploading ? 'Subiendo…' : form.image_url ? 'Cambiar foto' : 'Subir foto'}
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  className="hidden"
+                  onChange={e => {
+                    pickImage(e.target.files?.[0]);
+                    e.target.value = '';
+                  }}
+                />
+              </label>
+              {form.image_url && (
+                <button className="text-xs text-cream/50 underline text-left" onClick={() => set({ image_url: null })}>
+                  Quitar foto
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Tipo">
             <select className="input" value={form.kind} onChange={e => set({ kind: e.target.value as BarProduct['kind'] })}>
@@ -253,7 +301,9 @@ const CartaTab: React.FC<{ event: EventLite; products: BarProduct[]; items: BarI
       )}
       <div className="grid sm:grid-cols-2 gap-2">
         {list.map(p => (
-          <button key={p.id} className={`card p-3 text-left ${p.active ? '' : 'opacity-50'}`} onClick={() => setForm({ ...p })}>
+          <button key={p.id} className={`card p-3 text-left flex gap-3 ${p.active ? '' : 'opacity-50'}`} onClick={() => setForm({ ...p })}>
+            {p.image_url && <img src={p.image_url} alt="" loading="lazy" className="w-14 h-14 rounded-lg object-cover shrink-0" />}
+            <div className="flex-1 min-w-0">
             <div className="flex justify-between gap-2">
               <span className="font-semibold">{p.name}</span>
               <span className="text-gold-soft">{money(p.price, event.currency)}</span>
@@ -264,6 +314,7 @@ const CartaTab: React.FC<{ event: EventLite; products: BarProduct[]; items: BarI
               {!p.active && ' · oculto'}
               <Pencil className="w-3 h-3 inline ml-2" />
             </p>
+            </div>
           </button>
         ))}
       </div>
