@@ -32,6 +32,10 @@ const ERRORS: Record<string, string> = {
   NOT_ACCEPTED: 'Esta persona no está aceptada.',
   NOT_PAID: 'Este cobro ya no está marcado como cobrado.',
   RADICADO_MISMATCH: 'El radicado no coincide. Pídele que te muestre su mensaje de WhatsApp.',
+  RECIPE_ML_REQUIRED: 'Un cóctel o shot necesita al menos un licor con sus ml por trago.',
+  INVALID_IMAGE: 'Esa foto no es válida. Súbela de nuevo desde aquí.',
+  ORDER_NOT_FOUND: 'Ese pedido no existe.',
+  VOID_NOT_ALLOWED: 'Ya no se puede anular: el bartender lo entregó o pasaron más de 15 minutos. Pide ayuda al administrador.',
   UNDO_NOT_ALLOWED: 'Solo se puede deshacer en los primeros 10 minutos, y quien cobró. Pide ayuda a un administrador.',
 };
 

@@ -41,9 +41,11 @@ export const useBottleLevels = (eventId: string, enabled = true) => {
     if (!enabled) return;
     const t = setInterval(load, POLL_MS);
     window.addEventListener('403-synced', load);
+    window.addEventListener('403-levels', load);
     return () => {
       clearInterval(t);
       window.removeEventListener('403-synced', load);
+      window.removeEventListener('403-levels', load);
     };
   }, [key, load, enabled]);
 

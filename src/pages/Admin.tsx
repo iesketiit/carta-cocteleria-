@@ -123,6 +123,9 @@ const CartaTab: React.FC<{ event: EventLite; products: BarProduct[]; items: BarI
     }
   };
 
+  const needsMl = (p: Pick<BarProduct, 'kind' | 'ingredients'>) =>
+    (p.kind === 'coctel' || p.kind === 'shot') && !(p.ingredients ?? []).some(i => i.item_id && Number(i.ml) > 0);
+
   const list = products.filter(p => filter === 'todos' || p.spirit === filter || p.kind === filter);
 
   if (form) {
@@ -263,9 +266,14 @@ const CartaTab: React.FC<{ event: EventLite; products: BarProduct[]; items: BarI
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={form.active} onChange={e => set({ active: e.target.checked })} /> Se vende (visible en la barra)
         </label>
+        {needsMl(form) && (
+          <p className="text-sm text-amber-200">
+            Falta el licor y los ml por trago. Es obligatorio en cócteles y shots: así la botellita se gasta bien y avisa cuándo traer otra.
+          </p>
+        )}
         {msg && <p className="text-sm text-red-300">{msg}</p>}
         <div className="flex gap-2">
-          <button className="btn btn-gold" disabled={busy || !form.name.trim()} onClick={save}>
+          <button className="btn btn-gold" disabled={busy || uploading || !form.name.trim() || needsMl(form)} onClick={save}>
             <Save className="w-4 h-4" /> {busy ? 'Guardando…' : 'Guardar'}
           </button>
           <button className="btn btn-ghost" onClick={() => setForm(null)}>
@@ -312,6 +320,7 @@ const CartaTab: React.FC<{ event: EventLite; products: BarProduct[]; items: BarI
               {KINDS.find(k => k.key === p.kind)?.label} · {spiritLabel(p.spirit)}
               {p.kind !== 'botella' && ` · ${(p.ingredients ?? []).reduce((s, i) => s + i.ml, 0)} ml de licor`}
               {!p.active && ' · oculto'}
+              {needsMl(p) && <span className="text-amber-300"> · ⚠ faltan ml</span>}
               <Pencil className="w-3 h-3 inline ml-2" />
             </p>
             </div>

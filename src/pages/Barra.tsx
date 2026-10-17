@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Minus, Plus, Trash2, CheckCircle2, CloudOff, RefreshCw, AlertTriangle, BarChart3 } from 'lucide-react';
+import { Minus, Plus, Trash2, CheckCircle2, CloudOff, RefreshCw, AlertTriangle } from 'lucide-react';
 import { Shell } from '../components/Shell';
 import { useCatalog } from '../lib/catalog';
 import { enqueueOrder, syncOrders, useOrderQueue, discardOrder } from '../lib/offlineOrders';
-import { supabase } from '../lib/supabase';
 import { useBottleLevels } from '../lib/bottles';
 import { BottleAlerts, BottleShelf } from '../components/BottleMeter';
+import { MiCaja } from '../components/MiCaja';
 import { CartLine, EventLite, PayMethod } from '../lib/types';
 import { money, SPIRITS, PAY_LABEL, uuid } from '../lib/format';
 
@@ -32,8 +32,6 @@ export const Barra: React.FC<Props> = ({ event, events, eventId, onEvent, online
   const [pay, setPay] = useState<PayMethod>('efectivo');
   const [received, setReceived] = useState('');
   const [last, setLast] = useState<{ id: string; total: number; number?: number; lines: CartLine[] } | null>(null);
-  const [showSummary, setShowSummary] = useState(false);
-  const [summary, setSummary] = useState<{ cashier: string; method: string; orders: number; total: number }[]>([]);
 
   // Número del pedido cuando llega a la base.
   useEffect(() => {
@@ -84,11 +82,6 @@ export const Barra: React.FC<Props> = ({ event, events, eventId, onEvent, online
     syncOrders();
   };
 
-  const loadSummary = async () => {
-    const { data } = await supabase.rpc('bar_sales_summary', { p_event_id: event.id });
-    setSummary(((data as { byCashier: typeof summary })?.byCashier ?? []).map(r => ({ ...r, total: Number(r.total) })));
-  };
-
   return (
     <Shell
       title="Barra"
@@ -137,9 +130,24 @@ export const Barra: React.FC<Props> = ({ event, events, eventId, onEvent, online
               {!last.number && ' · díctalo al bartender'}
             </p>
           </div>
-          <button className="text-cream/50 text-xs underline" onClick={() => setLast(null)}>
-            Cerrar
-          </button>
+          <div className="flex flex-col items-end gap-1 shrink-0">
+            {!last.number && (
+              <button
+                className="text-red-300 text-xs underline"
+                onClick={() => {
+                  if (confirm('¿Anular este pedido? Todavía no se ha enviado.')) {
+                    discardOrder(last.id);
+                    setLast(null);
+                  }
+                }}
+              >
+                Anular
+              </button>
+            )}
+            <button className="text-cream/50 text-xs underline" onClick={() => setLast(null)}>
+              Cerrar
+            </button>
+          </div>
         </div>
       )}
 
@@ -283,28 +291,7 @@ export const Barra: React.FC<Props> = ({ event, events, eventId, onEvent, online
             </button>
           </div>
 
-          <button
-            className="mt-4 text-xs text-cream/50 flex items-center gap-1"
-            onClick={() => {
-              setShowSummary(s => !s);
-              if (!showSummary) loadSummary();
-            }}
-          >
-            <BarChart3 className="w-3.5 h-3.5" /> Mi caja de barra
-          </button>
-          {showSummary && (
-            <div className="mt-2 text-sm space-y-1">
-              {summary.length === 0 && <p className="text-cream/50 text-xs">Sin ventas registradas (o sin señal).</p>}
-              {summary.map(s => (
-                <div key={s.cashier + s.method} className="flex justify-between">
-                  <span>
-                    {s.cashier} · {PAY_LABEL[s.method] ?? s.method} · {s.orders}
-                  </span>
-                  <span className="text-gold-soft">{money(s.total, event.currency)}</span>
-                </div>
-              ))}
-            </div>
-          )}
+          <MiCaja eventId={event.id} currency={event.currency} online={online} pendingCount={pending} />
         </aside>
       </div>
     </Shell>
