@@ -3,8 +3,10 @@
 --
 --   1) bar_save_product: un cóctel o shot DEBE llevar al menos un licor con
 --      sus ml (sin eso la botellita no puede gastarse). Incluye la foto.
---   2) bar_cashier_void: el cajero anula SU venta mal hecha (15 min, y solo
---      si el bartender todavía no la entregó). Devuelve el inventario.
+--   2) bar_cashier_void: el cajero anula SU venta mal hecha, cuando quiera.
+--      Queda registrada como "anulado" (quién y cuándo) para el cierre.
+--      Si el bartender aún no la entregaba, el inventario vuelve; si ya la
+--      entregó, el licor sí se gastó y el inventario no se toca.
 --   3) Finanzas (global en King): el rol de finanzas puede leer las ventas de
 --      la barra y ver el total cobrado en la puerta de /envivo.
 --
@@ -93,16 +95,16 @@ begin
     if o.cashier_id is distinct from auth.uid() or not public.has_staff_role('cajero_barra', o.event_id) then
       raise exception 'NOT_AUTHORIZED' using errcode = 'P0001';
     end if;
-    if o.status <> 'pendiente' or o.synced_at < now() - interval '15 minutes' then
-      raise exception 'VOID_NOT_ALLOWED' using errcode = 'P0001';
-    end if;
   end if;
   if o.status = 'anulado' then return; end if;
   update public.bar_orders
      set status = 'anulado', voided_at = now(), voided_by = auth.uid(),
          note = coalesce(note || ' · ', '') || 'Anulado: ' || coalesce(nullif(trim(p_note), ''), 'venta mal hecha')
    where id = p_order_id;
-  delete from public.bar_stock_moves where order_id = p_order_id;
+  -- Si ya se entregó, el licor ya se usó: el inventario no vuelve.
+  if o.status = 'pendiente' then
+    delete from public.bar_stock_moves where order_id = p_order_id;
+  end if;
 end;
 $$;
 grant execute on function public.bar_cashier_void(uuid, text) to authenticated;

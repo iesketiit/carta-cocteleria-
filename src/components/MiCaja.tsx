@@ -20,8 +20,6 @@ interface Props {
   pendingCount: number;
 }
 
-const VOID_MINUTES = 15;
-
 // Caja del cajero de barra: cuánto debe tener en cada forma de pago y sus
 // últimos pedidos, con "Anular" si se equivocó.
 export const MiCaja: React.FC<Props> = ({ eventId, currency, online, pendingCount }) => {
@@ -74,11 +72,10 @@ export const MiCaja: React.FC<Props> = ({ eventId, currency, online, pendingCoun
     };
   }, [load]);
 
-  const canVoid = (o: MyOrder) =>
-    o.status === 'pendiente' && Date.now() - new Date(o.synced_at).getTime() < VOID_MINUTES * 60000;
+  const canVoid = (o: MyOrder) => o.status !== 'anulado';
 
   const voidIt = async (o: MyOrder) => {
-    if (!confirm(`¿Anular el pedido #${o.number} (${money(o.total, currency)})? Se descuenta de tu caja y vuelve al inventario.`)) return;
+    if (!confirm(`¿Anular el pedido #${o.number} (${money(o.total, currency)})? Se descuenta de tu caja y queda registrado como anulado.`)) return;
     setBusy(o.id);
     setMsg('');
     const { error } = await supabase.rpc('bar_cashier_void', { p_order_id: o.id, p_note: 'Anulado por el cajero' });
@@ -119,7 +116,7 @@ export const MiCaja: React.FC<Props> = ({ eventId, currency, online, pendingCoun
       {!online && <p className="text-[11px] text-cream/40 mt-1">Sin señal: se actualiza al volver.</p>}
 
       <button className="mt-3 w-full flex items-center justify-between text-xs text-cream/70" onClick={() => setOpen(o => !o)}>
-        <span>Mis últimos pedidos (por si te equivocaste)</span>
+        <span>Mis últimos pedidos (borrar si te equivocaste)</span>
         <ChevronDown className={`w-4 h-4 transition ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
@@ -145,13 +142,13 @@ export const MiCaja: React.FC<Props> = ({ eventId, currency, online, pendingCoun
                     onClick={() => voidIt(o)}
                     className="flex items-center gap-1 text-red-300 underline disabled:opacity-40"
                   >
-                    <Undo2 className="w-3 h-3" /> Anular
+                    <Undo2 className="w-3 h-3" /> Borrar
                   </button>
                 )}
               </div>
             </div>
           ))}
-          <p className="text-[10px] text-cream/40">Solo se anula si el bartender aún no lo entrega y pasaron menos de {VOID_MINUTES} min. Si no, pide ayuda al administrador.</p>
+          <p className="text-[10px] text-cream/40">Al anular, el pedido sale de tu caja. El administrador lo ve en el cierre como anulado.</p>
         </div>
       )}
     </div>
