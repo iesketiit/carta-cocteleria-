@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, BookOpen, ClipboardList, Wine, Search, RefreshCw } from 'lucide-react';
 import { Shell } from '../components/Shell';
 import { useBottleLevels } from '../lib/bottles';
-import { BottleAlerts, BottleShelf } from '../components/BottleMeter';
+import { BottleAlerts, BottleNeeds, BottleShelf, BottleNeed } from '../components/BottleMeter';
 import { useCatalog } from '../lib/catalog';
 import { supabase, errText } from '../lib/supabase';
 import { Access, BarProduct, EventLite } from '../lib/types';
@@ -76,7 +76,7 @@ export const Bartender: React.FC<Props> = ({ event, events, eventId, onEvent, on
   };
 
   const takeBottle = async (itemId: string, name: string) => {
-    if (!confirm(`¿Registrar que tomaste 1 botella de ${name} (de las de venta) para cocteleria?`)) return;
+    if (!confirm(`¿Confirmas que ya tomaste otra botella de ${name} (de las de venta) para cocteleria?`)) return;
     setBusy(itemId);
     const { error } = await supabase.rpc('bar_stock_move', {
       p_event_id: event.id,
@@ -89,7 +89,10 @@ export const Bartender: React.FC<Props> = ({ event, events, eventId, onEvent, on
     });
     setBusy('');
     setMsg(error ? { ok: false, text: errText(error) } : { ok: true, text: `Registrado: 1 botella de ${name} pasó a cocteleria.` });
-    if (!error) reloadLevels();
+    if (!error) {
+      reloadLevels();
+      window.dispatchEvent(new Event('403-levels'));
+    }
   };
 
   const recipes = useMemo(
@@ -102,6 +105,18 @@ export const Bartender: React.FC<Props> = ({ event, events, eventId, onEvent, on
   );
   const imageOf = (productId: string | null, name: string) =>
     (products.find(p => p.id === productId) ?? products.find(p => p.name === name))?.image_url ?? null;
+  const productFor = (productId: string | null, name: string) => products.find(p => p.id === productId) ?? products.find(p => p.name === name);
+  // Botellas que gasta un pedido (ml por trago × cantidad).
+  const needsOf = (o: Order): BottleNeed[] => {
+    const m = new Map<string, number>();
+    for (const it of o.items) {
+      for (const ing of productFor(it.product_id, it.name)?.ingredients ?? []) {
+        m.set(ing.item_id, (m.get(ing.item_id) ?? 0) + Number(ing.ml) * it.qty);
+      }
+    }
+    return [...m.entries()].map(([itemId, ml]) => ({ itemId, ml }));
+  };
+  const itemNames = Object.fromEntries(items.map(i => [i.id, i.name]));
   const itemName = (id: string) => items.find(i => i.id === id)?.name ?? 'Licor';
   const openRecipe = (productId: string | null, name: string) =>
     setRecipe(products.find(p => p.id === productId) ?? products.find(p => p.name === name) ?? null);
@@ -123,7 +138,7 @@ export const Bartender: React.FC<Props> = ({ event, events, eventId, onEvent, on
         </button>
       </div>
 
-      <BottleAlerts levels={levels} />
+      <BottleAlerts levels={levels} onTake={takeBottle} busyId={busy} />
 
       {msg && <p className={`text-sm mb-3 ${msg.ok ? 'text-emerald-300' : 'text-red-300'}`}>{msg.text}</p>}
 
@@ -163,6 +178,9 @@ export const Bartender: React.FC<Props> = ({ event, events, eventId, onEvent, on
                       </li>
                     ))}
                   </ul>
+                  <div className="mt-3">
+                    <BottleNeeds needs={needsOf(o)} levels={levels} names={itemNames} onTake={takeBottle} busyId={busy} />
+                  </div>
                   <button className="btn btn-gold w-full mt-4" disabled={busy === o.id} onClick={() => deliver(o.id)}>
                     <CheckCircle2 className="w-5 h-5" /> Entregado
                   </button>

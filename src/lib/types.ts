@@ -56,6 +56,7 @@ export interface BottleLevel {
   spirit: string;
   bottleMl: number;
   remainingMl: number;
+  minServingMl: number | null;
   currentPct: number;
   spareBottles: number;
   status: 'ok' | 'low' | 'empty';
