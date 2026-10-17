@@ -110,7 +110,7 @@ export const Barra: React.FC<Props> = ({ event, events, eventId, onEvent, online
         ) : null
       }
     >
-      <BottleAlerts levels={levels} />
+      <BottleAlerts levels={levels} products={products} />
 
       {failed.length > 0 && (
         <div className="card p-3 mb-3 border-red-400/40 text-sm">
@@ -205,7 +205,7 @@ export const Barra: React.FC<Props> = ({ event, events, eventId, onEvent, online
             </div>
           )}
 
-          <BottleShelf levels={levels} />
+          <BottleShelf levels={levels} products={products} />
 
           {products.length === 0 ? (
             <div className="card p-6 text-center text-sm text-cream/60">
@@ -277,7 +277,7 @@ export const Barra: React.FC<Props> = ({ event, events, eventId, onEvent, online
 
           {needs.length > 0 && (
             <div className="mt-3">
-              <BottleNeeds needs={needs} levels={levels} names={itemNames} />
+              <BottleNeeds needs={needs} levels={levels} products={products} names={itemNames} />
             </div>
           )}
 
