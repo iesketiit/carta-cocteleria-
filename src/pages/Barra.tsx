@@ -4,7 +4,7 @@ import { Shell } from '../components/Shell';
 import { useCatalog } from '../lib/catalog';
 import { enqueueOrder, syncOrders, useOrderQueue, discardOrder } from '../lib/offlineOrders';
 import { useBottleLevels } from '../lib/bottles';
-import { BottleAlerts, BottleShelf } from '../components/BottleMeter';
+import { BottleAlerts, BottleShelf, currentMl } from '../components/BottleMeter';
 import { MiCaja } from '../components/MiCaja';
 import { CartLine, EventLite, PayMethod } from '../lib/types';
 import { money, SPIRITS, PAY_LABEL, uuid } from '../lib/format';
@@ -129,6 +129,16 @@ export const Barra: React.FC<Props> = ({ event, events, eventId, onEvent, online
               {last.lines.map(l => `${l.qty}× ${l.name}`).join(' · ')} · {money(last.total, event.currency)}
               {!last.number && ' · díctalo al bartender'}
             </p>
+            {(() => {
+              // Lo que queda en las botellas que usó esta venta.
+              const ids = new Set(last.lines.flatMap(l => (products.find(p => p.id === l.productId)?.ingredients ?? []).map(i => i.item_id)));
+              const used = levels.filter(b => ids.has(b.itemId));
+              return used.length ? (
+                <p className="text-xs text-gold-soft mt-1">
+                  Quedan: {used.map(b => `${b.name} ${b.status === 'empty' ? 'vacía' : `${currentMl(b)}/${b.bottleMl} ml`}`).join(' · ')}
+                </p>
+              ) : null;
+            })()}
           </div>
           <div className="flex flex-col items-end gap-1 shrink-0">
             {!last.number && (

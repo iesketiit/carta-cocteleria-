@@ -43,6 +43,9 @@ export const Bottle: React.FC<{ pct: number; status: BottleLevel['status']; size
   );
 };
 
+// ml que quedan en la botella que se está usando (sin contar las de reserva).
+export const currentMl = (b: BottleLevel) => Math.max(0, Math.round(b.remainingMl - b.spareBottles * b.bottleMl));
+
 // Franja de alerta: sale cuando hay botellas por acabarse. Es la misma para
 // el cajero de barra y el bartender.
 export const BottleAlerts: React.FC<{ levels: BottleLevel[] }> = ({ levels }) => {
@@ -62,7 +65,7 @@ export const BottleAlerts: React.FC<{ levels: BottleLevel[] }> = ({ levels }) =>
               {b.status === 'empty' ? 'Se acabó' : 'Se está acabando'}: {b.name}
             </p>
             <p className="text-sm text-cream/85">
-              Trae una nueva botella{b.status === 'low' ? ` (queda ${Math.round(b.remainingMl)} ml)` : ''}.
+              Trae una nueva botella{b.status === 'low' ? ` (quedan ${currentMl(b)} de ${b.bottleMl} ml)` : ''}.
             </p>
           </div>
         </div>
@@ -72,7 +75,7 @@ export const BottleAlerts: React.FC<{ levels: BottleLevel[] }> = ({ levels }) =>
 };
 
 // Todas las botellitas de cocteleria, para ver de un vistazo cómo van.
-export const BottleShelf: React.FC<{ levels: BottleLevel[]; defaultOpen?: boolean }> = ({ levels, defaultOpen = false }) => {
+export const BottleShelf: React.FC<{ levels: BottleLevel[]; defaultOpen?: boolean }> = ({ levels, defaultOpen = true }) => {
   const [open, setOpen] = useState(defaultOpen);
   if (levels.length === 0) return null;
   return (
@@ -87,10 +90,10 @@ export const BottleShelf: React.FC<{ levels: BottleLevel[]; defaultOpen?: boolea
             <div key={b.itemId} className="flex flex-col items-center text-center">
               <Bottle pct={b.currentPct} status={b.status} size={64} />
               <p className="text-[11px] leading-tight mt-1 line-clamp-2">{b.name}</p>
-              <p className={`text-[10px] ${b.status === 'ok' ? 'text-cream/50' : b.status === 'low' ? 'text-amber-300' : 'text-red-300'}`}>
-                {b.status === 'empty' ? 'Vacía' : `${b.currentPct}%`}
-                {b.spareBottles > 0 ? ` · +${b.spareBottles}` : ''}
+              <p className={`text-[11px] font-semibold ${b.status === 'ok' ? 'text-cream/80' : b.status === 'low' ? 'text-amber-300' : 'text-red-300'}`}>
+                {b.status === 'empty' ? 'Vacía' : `${currentMl(b)} / ${b.bottleMl} ml`}
               </p>
+              {b.spareBottles > 0 && <p className="text-[10px] text-cream/50">+{b.spareBottles} de reserva</p>}
             </div>
           ))}
         </div>

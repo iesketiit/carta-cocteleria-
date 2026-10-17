@@ -129,6 +129,7 @@ export const Bartender: React.FC<Props> = ({ event, events, eventId, onEvent, on
 
       {tab === 'pedidos' && (
         <>
+          <BottleShelf levels={levels} />
           {!online && (
             <p className="text-sm text-red-200 mb-3">Sin señal: los pedidos nuevos no llegan. El cajero te los dicta.</p>
           )}
