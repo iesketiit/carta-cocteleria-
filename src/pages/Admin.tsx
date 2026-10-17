@@ -229,12 +229,15 @@ const CartaTab: React.FC<{ event: EventLite; products: BarProduct[]; items: BarI
           </Field>
         ) : (
           <div>
-            <p className="text-sm text-gold-soft mb-0.5">¿Cuántos ml de licor lleva cada trago?</p>
+            <p className="text-sm text-gold-soft mb-0.5">¿Con qué botella se hace y cuántos ml lleva cada trago?</p>
             <p className="text-xs text-cream/60 mb-2">
-              Elige el licor y escribe los ml en la casilla de la derecha. Es obligatorio en cócteles y shots: con eso se gasta la botellita.
+              Elige la botella (se ve su tamaño) y escribe los ml por trago. Cada venta resta esos ml de esa botella y el bartender y la caja ven lo que queda.
+              {items.length === 0 && ' Primero agrega tus botellas en la pestaña "Licores".'}
+              {items.length > 0 && ' ¿No está tu botella? Agrégala en la pestaña "Licores".'}
             </p>
             {(form.ingredients ?? []).map((ing, idx) => (
-              <div key={idx} className="flex gap-2 mb-2">
+              <div key={idx} className="mb-3">
+              <div className="flex gap-2">
                 <select
                   className="input"
                   value={ing.item_id}
@@ -244,10 +247,10 @@ const CartaTab: React.FC<{ event: EventLite; products: BarProduct[]; items: BarI
                     set({ ingredients: next });
                   }}
                 >
-                  <option value="">— Licor —</option>
+                  <option value="">— Botella —</option>
                   {items.map(i => (
                     <option key={i.id} value={i.id}>
-                      {i.name}
+                      {i.name} · botella de {i.bottle_ml} ml
                     </option>
                   ))}
                 </select>
@@ -267,6 +270,18 @@ const CartaTab: React.FC<{ event: EventLite; products: BarProduct[]; items: BarI
                 <button className="btn btn-ghost !px-3" onClick={() => set({ ingredients: (form.ingredients ?? []).filter((_, i) => i !== idx) })}>
                   <X className="w-4 h-4" />
                 </button>
+              </div>
+              {(() => {
+                const it = items.find(x => x.id === ing.item_id);
+                if (!it) return null;
+                const ml = Number(ing.ml) || 0;
+                return (
+                  <p className="text-[11px] text-cream/50 mt-1">
+                    Botella de {it.bottle_ml} ml
+                    {ml > 0 && ` · cada trago gasta ${ml} ml · rinde ≈ ${Math.floor(it.bottle_ml / ml)} tragos por botella`}
+                  </p>
+                );
+              })()}
               </div>
             ))}
             <button className="btn btn-ghost !py-2 text-sm" onClick={() => set({ ingredients: [...(form.ingredients ?? []), { item_id: '', ml: 60 }] })}>
