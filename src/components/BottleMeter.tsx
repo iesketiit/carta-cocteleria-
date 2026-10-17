@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AlertTriangle, ChevronDown } from 'lucide-react';
+import { AlertTriangle, ChevronDown, Wine } from 'lucide-react';
 import { BottleLevel } from '../lib/types';
 
 const COLOR = { ok: '#c9a96e', low: '#f59e0b', empty: '#ef4444' } as const;
@@ -46,9 +46,21 @@ export const Bottle: React.FC<{ pct: number; status: BottleLevel['status']; size
 // ml que quedan en la botella que se está usando (sin contar las de reserva).
 export const currentMl = (b: BottleLevel) => Math.max(0, Math.round(b.remainingMl - b.spareBottles * b.bottleMl));
 
-// Franja de alerta: sale cuando hay botellas por acabarse. Es la misma para
-// el cajero de barra y el bartender.
-export const BottleAlerts: React.FC<{ levels: BottleLevel[] }> = ({ levels }) => {
+// Botón del bartender: registra que tomó otra botella (pasa de venta a cocteleria).
+const TakeButton: React.FC<{ onTake: () => void; busy?: boolean }> = ({ onTake, busy }) => (
+  <button className="btn btn-gold !py-2 text-sm mt-2" disabled={busy} onClick={onTake}>
+    <Wine className="w-4 h-4" /> Ya tomé otra botella
+  </button>
+);
+
+// Franja de alerta: sale cuando hay botellas por acabarse o que ya no alcanzan
+// para otro trago. La ven el cajero y el bartender; solo el bartender recibe el
+// botón "Ya tomé otra botella" (onTake).
+export const BottleAlerts: React.FC<{
+  levels: BottleLevel[];
+  onTake?: (itemId: string, name: string) => void;
+  busyId?: string;
+}> = ({ levels, onTake, busyId }) => {
   const bad = levels.filter(b => b.status !== 'ok');
   if (bad.length === 0) return null;
   return (
@@ -62,14 +74,69 @@ export const BottleAlerts: React.FC<{ levels: BottleLevel[] }> = ({ levels }) =>
           <div className="min-w-0">
             <p className={`font-semibold flex items-center gap-1.5 ${b.status === 'empty' ? 'text-red-200' : 'text-amber-200'}`}>
               <AlertTriangle className="w-4 h-4 shrink-0" />
-              {b.status === 'empty' ? 'Se acabó' : 'Se está acabando'}: {b.name}
+              {b.status === 'empty' ? (b.remainingMl > 0 ? 'No alcanza para otro trago' : 'Se acabó') : 'Se está acabando'}: {b.name}
             </p>
             <p className="text-sm text-cream/85">
-              Trae una nueva botella{b.status === 'low' ? ` (quedan ${currentMl(b)} de ${b.bottleMl} ml)` : ''}.
+              {b.status === 'empty'
+                ? `Hay que tomar otra botella${b.remainingMl > 0 ? ` (solo quedan ${currentMl(b)} ml)` : ''}.`
+                : `Trae una nueva botella (quedan ${currentMl(b)} de ${b.bottleMl} ml).`}
             </p>
+            {onTake && <TakeButton busy={busyId === b.itemId} onTake={() => onTake(b.itemId, b.name)} />}
           </div>
         </div>
       ))}
+    </div>
+  );
+};
+
+// Apartado "Botellas de este pedido": cuánto queda de cada botella que usa y si
+// alcanza. Se muestra al vender (cajero) y al tomar el pedido (bartender).
+export interface BottleNeed {
+  itemId: string;
+  ml: number; // ml que gasta el pedido de esa botella
+}
+
+export const BottleNeeds: React.FC<{
+  needs: BottleNeed[];
+  levels: BottleLevel[];
+  names: Record<string, string>;
+  onTake?: (itemId: string, name: string) => void;
+  busyId?: string;
+  title?: string;
+}> = ({ needs, levels, names, onTake, busyId, title = 'Botellas de este pedido' }) => {
+  if (needs.length === 0) return null;
+  return (
+    <div className="rounded-xl border border-gold/25 bg-black/30 p-3 space-y-2.5">
+      <p className="text-xs text-cream/60">{title}</p>
+      {needs.map(n => {
+        const lv = levels.find(l => l.itemId === n.itemId);
+        const name = lv?.name ?? names[n.itemId] ?? 'Botella';
+        const left = lv ? lv.remainingMl : 0;
+        const enough = !!lv && left >= n.ml;
+        const status: BottleLevel['status'] = !lv || !enough ? 'empty' : lv.status;
+        return (
+          <div key={n.itemId} className="flex items-start gap-3">
+            <Bottle pct={lv?.currentPct ?? 0} status={status} size={48} />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold leading-tight">{name}</p>
+              <p className="text-xs text-cream/70">
+                {lv ? `Quedan ${currentMl(lv)} de ${lv.bottleMl} ml${lv.spareBottles > 0 ? ` (+${lv.spareBottles} de reserva)` : ''}` : 'No hay botella cargada en cocteleria'}
+                {' · '}este pedido gasta {Math.round(n.ml)} ml
+              </p>
+              {enough ? (
+                <p className={`text-xs mt-0.5 ${status === 'low' ? 'text-amber-300' : 'text-emerald-300'}`}>
+                  {status === 'low' ? 'Alcanza, pero queda poco: trae otra botella pronto' : 'Alcanza'}
+                </p>
+              ) : (
+                <>
+                  <p className="text-xs mt-0.5 text-red-300 font-semibold">No alcanza: hay que tomar otra botella</p>
+                  {onTake && <TakeButton busy={busyId === n.itemId} onTake={() => onTake(n.itemId, name)} />}
+                </>
+              )}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 };

@@ -4,7 +4,7 @@ import { Shell } from '../components/Shell';
 import { useCatalog } from '../lib/catalog';
 import { enqueueOrder, syncOrders, useOrderQueue, discardOrder } from '../lib/offlineOrders';
 import { useBottleLevels } from '../lib/bottles';
-import { BottleAlerts, BottleShelf, currentMl } from '../components/BottleMeter';
+import { BottleAlerts, BottleNeeds, BottleShelf, currentMl, BottleNeed } from '../components/BottleMeter';
 import { MiCaja } from '../components/MiCaja';
 import { CartLine, EventLite, PayMethod } from '../lib/types';
 import { money, SPIRITS, PAY_LABEL, uuid } from '../lib/format';
@@ -23,7 +23,7 @@ type Section = 'coctel' | 'botella' | 'sin_alcohol';
 const SECTION_LABEL: Record<Section, string> = { coctel: 'Cócteles y shots', botella: 'Botellas', sin_alcohol: 'Sin alcohol' };
 
 export const Barra: React.FC<Props> = ({ event, events, eventId, onEvent, online, onBack }) => {
-  const { products, reload, loading } = useCatalog(event.id);
+  const { products, items, reload, loading } = useCatalog(event.id);
   const { pending, failed } = useOrderQueue();
   const { levels } = useBottleLevels(event.id);
   const [section, setSection] = useState<Section>('coctel');
@@ -49,6 +49,18 @@ export const Barra: React.FC<Props> = ({ event, events, eventId, onEvent, online
   );
   const spiritsHere = SPIRITS.filter(s => inSection.some(p => p.spirit === s.key));
   const visible = spirit === 'todos' ? inSection : inSection.filter(p => p.spirit === spirit);
+
+  // Botellas que gasta el pedido actual (ml por trago × cantidad).
+  const needs: BottleNeed[] = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const l of cart) {
+      for (const ing of products.find(p => p.id === l.productId)?.ingredients ?? []) {
+        m.set(ing.item_id, (m.get(ing.item_id) ?? 0) + Number(ing.ml) * l.qty);
+      }
+    }
+    return [...m.entries()].map(([itemId, ml]) => ({ itemId, ml }));
+  }, [cart, products]);
+  const itemNames = useMemo(() => Object.fromEntries(items.map(i => [i.id, i.name])), [items]);
 
   const total = useMemo(() => cart.reduce((s, l) => s + l.price * l.qty, 0), [cart]);
   const count = cart.reduce((s, l) => s + l.qty, 0);
@@ -260,6 +272,12 @@ export const Barra: React.FC<Props> = ({ event, events, eventId, onEvent, online
               <button className="text-xs text-cream/40 flex items-center gap-1" onClick={() => setCart([])}>
                 <Trash2 className="w-3 h-3" /> Vaciar
               </button>
+            </div>
+          )}
+
+          {needs.length > 0 && (
+            <div className="mt-3">
+              <BottleNeeds needs={needs} levels={levels} names={itemNames} />
             </div>
           )}
 

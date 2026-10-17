@@ -201,3 +201,44 @@ begin
 end;
 $$;
 grant execute on function public.bar_save_item(uuid, uuid, text, text, int, numeric, boolean) to authenticated;
+
+-- 6) Nivel de botellas: 'empty' también cuando ya no alcanza para otro trago.
+create or replace function public.bar_bottle_levels(p_event_id uuid)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+begin
+  if not (public.has_staff_role('cajero_barra', p_event_id) or public.has_staff_role('bartender', p_event_id)
+          or public.has_staff_role('inventario', p_event_id)) then
+    raise exception 'NOT_AUTHORIZED' using errcode = 'P0001';
+  end if;
+  return coalesce((
+    select jsonb_agg(jsonb_build_object(
+      'itemId', t.id, 'name', t.name, 'spirit', t.spirit, 'bottleMl', t.bottle_ml,
+      'remainingMl', t.rem,
+      'minServingMl', t.min_ml,
+      'currentPct', case when t.rem <= 0 then 0
+                         else round((t.rem - (ceil(t.rem / t.bottle_ml) - 1) * t.bottle_ml) / t.bottle_ml * 100) end,
+      'spareBottles', case when t.rem <= 0 then 0 else ceil(t.rem / t.bottle_ml) - 1 end,
+      -- empty: no queda para ni un trago más (o está en 0). low: queda 25 % o menos.
+      'status', case when t.rem <= 0 or (t.min_ml is not null and t.rem < t.min_ml) then 'empty'
+                     when t.rem <= t.bottle_ml * 0.25 then 'low' else 'ok' end
+    ) order by (t.rem / t.bottle_ml), t.name)
+    from (
+      select i.id, i.name, i.spirit, i.bottle_ml,
+             greatest(0, coalesce(sum(m.bottles * i.bottle_ml + m.ml) filter (where m.kind <> 'conteo'), 0))::numeric as rem,
+             (select min(r.ml) from public.bar_recipe_ingredients r
+                join public.bar_products p on p.id = r.product_id
+               where r.item_id = i.id and p.active and p.kind in ('coctel', 'shot'))::numeric as min_ml
+        from public.bar_items i
+        join public.bar_stock_moves m on m.item_id = i.id and m.pool = 'cocteleria'
+       where i.event_id = p_event_id and i.active
+       group by i.id, i.name, i.spirit, i.bottle_ml
+    ) t
+  ), '[]'::jsonb);
+end;
+$$;
+grant execute on function public.bar_bottle_levels(uuid) to authenticated;
