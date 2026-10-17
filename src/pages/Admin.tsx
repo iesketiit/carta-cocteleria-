@@ -45,7 +45,7 @@ export const Admin: React.FC<Props> = ({ event, events, eventId, onEvent, online
         ))}
       </div>
       {!online && <p className="text-sm text-red-200 mb-3">Sin señal: los cambios se guardan cuando vuelva la conexión.</p>}
-      {tab === 'carta' && <CartaTab event={event} {...catalog} />}
+      {tab === 'carta' && <CartaTab event={event} {...catalog} goItems={() => setTab('botellas')} />}
       {tab === 'botellas' && <ItemsTab event={event} {...catalog} />}
       {tab === 'inventario' && <InventarioTab event={event} items={catalog.items} />}
       {tab === 'cierre' && <CierreTab event={event} />}
@@ -71,12 +71,15 @@ const emptyProduct = (): BarProduct => ({
   ingredients: [{ item_id: '', ml: 60 }],
 });
 
-const CartaTab: React.FC<{ event: EventLite; products: BarProduct[]; items: BarItem[]; reload: () => void }> = ({
+const CartaTab: React.FC<{ event: EventLite; products: BarProduct[]; items: BarItem[]; reload: () => void; goItems: () => void }> = ({
   event,
   products,
-  items,
+  items: allItems,
   reload,
+  goItems,
 }) => {
+  // Solo botellas reales (con ml cargados y activas).
+  const items = allItems.filter(i => i.active && Number(i.bottle_ml) > 0);
   const [form, setForm] = useState<BarProduct | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
@@ -232,9 +235,20 @@ const CartaTab: React.FC<{ event: EventLite; products: BarProduct[]; items: BarI
             <p className="text-sm text-gold-soft mb-0.5">¿Con qué botella se hace y cuántos ml lleva cada trago?</p>
             <p className="text-xs text-cream/60 mb-2">
               Elige la botella (se ve su tamaño) y escribe los ml por trago. Cada venta resta esos ml de esa botella y el bartender y la caja ven lo que queda.
-              {items.length === 0 && ' Primero agrega tus botellas en la pestaña "Licores".'}
-              {items.length > 0 && ' ¿No está tu botella? Agrégala en la pestaña "Licores".'}
             </p>
+            {items.length === 0 && (
+              <div className="rounded-xl border border-amber-400/50 bg-amber-950/30 p-3 mb-2">
+                <p className="text-sm text-amber-200">Todavía no hay botellas cargadas. Sin una botella real (con sus ml) no puedes seguir.</p>
+                <button className="btn btn-gold !py-2 text-sm mt-2" onClick={goItems}>
+                  Cargar mis botellas en "Licores"
+                </button>
+              </div>
+            )}
+            {items.length > 0 && (
+              <button className="text-xs text-gold underline mb-2" onClick={goItems}>
+                ¿No está tu botella? Cárgala en "Licores"
+              </button>
+            )}
             {(form.ingredients ?? []).map((ing, idx) => (
               <div key={idx} className="mb-3">
               <div className="flex gap-2">
@@ -284,7 +298,7 @@ const CartaTab: React.FC<{ event: EventLite; products: BarProduct[]; items: BarI
               })()}
               </div>
             ))}
-            <button className="btn btn-ghost !py-2 text-sm" onClick={() => set({ ingredients: [...(form.ingredients ?? []), { item_id: '', ml: 60 }] })}>
+            <button className="btn btn-ghost !py-2 text-sm" disabled={items.length === 0} onClick={() => set({ ingredients: [...(form.ingredients ?? []), { item_id: '', ml: 60 }] })}>
               <Plus className="w-4 h-4" /> Agregar licor
             </button>
           </div>
@@ -378,13 +392,13 @@ const ItemsTab: React.FC<{ event: EventLite; items: BarItem[]; reload: () => voi
   const [form, setForm] = useState<Partial<BarItem> | null>(null);
   const [msg, setMsg] = useState('');
   const save = async () => {
-    if (!form?.name?.trim()) return;
+    if (!form?.name?.trim() || !(Number(form.bottle_ml) > 0)) return;
     const { error } = await supabase.rpc('bar_save_item', {
       p_event_id: event.id,
       p_id: form.id || null,
       p_name: form.name,
       p_spirit: form.spirit || 'otro',
-      p_bottle_ml: Number(form.bottle_ml) || 750,
+      p_bottle_ml: Number(form.bottle_ml) || 0,
       p_bottle_price: form.bottle_price ? Number(form.bottle_price) : null,
       p_active: form.active ?? true,
     });
@@ -415,21 +429,33 @@ const ItemsTab: React.FC<{ event: EventLite; items: BarItem[]; reload: () => voi
                 ))}
               </select>
             </Field>
-            <Field label="ml por botella">
+            <Field label="ml que trae la botella (obligatorio)">
               <input
                 className="input"
                 inputMode="numeric"
-                value={String(form.bottle_ml ?? 750)}
+                placeholder="Ej. 750"
+                value={form.bottle_ml ? String(form.bottle_ml) : ''}
                 onChange={e => setForm({ ...form, bottle_ml: Number(e.target.value.replace(/\D/g, '')) || 0 })}
               />
             </Field>
           </div>
+          <div className="flex flex-wrap gap-2 items-center -mt-1">
+            <span className="text-xs text-cream/50">Tamaños comunes:</span>
+            {[375, 700, 750, 1000].map(ml => (
+              <button key={ml} type="button" className={`chip ${Number(form.bottle_ml) === ml ? 'chip-on' : ''}`} onClick={() => setForm({ ...form, bottle_ml: ml })}>
+                {ml} ml
+              </button>
+            ))}
+          </div>
+          {!(Number(form.bottle_ml) > 0) && (
+            <p className="text-sm text-amber-200">Escribe cuántos ml trae la botella. Sin eso no se puede guardar ni usar en cócteles.</p>
+          )}
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={form.active ?? true} onChange={e => setForm({ ...form, active: e.target.checked })} /> Activo
           </label>
           {msg && <p className="text-sm text-red-300">{msg}</p>}
           <div className="flex gap-2">
-            <button className="btn btn-gold" onClick={save}>
+            <button className="btn btn-gold" disabled={!form.name?.trim() || !(Number(form.bottle_ml) > 0)} onClick={save}>
               <Save className="w-4 h-4" /> Guardar
             </button>
             <button className="btn btn-ghost" onClick={() => setForm(null)}>
@@ -439,7 +465,7 @@ const ItemsTab: React.FC<{ event: EventLite; items: BarItem[]; reload: () => voi
         </div>
       ) : (
         <>
-          <button className="btn btn-gold !py-2 mb-3" onClick={() => setForm({ spirit: 'whisky', bottle_ml: 750, active: true })}>
+          <button className="btn btn-gold !py-2 mb-3" onClick={() => setForm({ spirit: 'whisky', bottle_ml: 0, active: true })}>
             <Plus className="w-4 h-4" /> Nuevo licor
           </button>
           <div className="grid sm:grid-cols-2 gap-2">
