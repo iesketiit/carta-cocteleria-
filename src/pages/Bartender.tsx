@@ -1,8 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { CheckCircle2, BookOpen, ClipboardList, Wine, Search, RefreshCw } from 'lucide-react';
 import { Shell } from '../components/Shell';
-import { useBottleLevels } from '../lib/bottles';
-import { BottleAlerts, BottleNeeds, BottleShelf, BottleNeed } from '../components/BottleMeter';
 import { useCatalog } from '../lib/catalog';
 import { supabase, errText } from '../lib/supabase';
 import { Access, BarProduct, EventLite } from '../lib/types';
@@ -35,7 +33,6 @@ const ago = (iso: string) => {
 
 export const Bartender: React.FC<Props> = ({ event, events, eventId, onEvent, online, onBack }) => {
   const { products, items } = useCatalog(event.id);
-  const { levels, reload: reloadLevels } = useBottleLevels(event.id);
   const [tab, setTab] = useState<Tab>('pedidos');
   const [orders, setOrders] = useState<Order[]>([]);
   const [recipe, setRecipe] = useState<BarProduct | null>(null);
@@ -51,7 +48,7 @@ export const Bartender: React.FC<Props> = ({ event, events, eventId, onEvent, on
       .eq('event_id', event.id)
       .eq('status', 'pendiente')
       .order('created_at', { ascending: true })
-      .limit(60);
+      .limit(300);
     if (error) return;
     setOrders(
       ((data ?? []) as unknown as (Omit<Order, 'items'> & { bar_order_items: Order['items'] })[]).map(o => ({
@@ -76,7 +73,7 @@ export const Bartender: React.FC<Props> = ({ event, events, eventId, onEvent, on
   };
 
   const takeBottle = async (itemId: string, name: string) => {
-    if (!confirm(`¿Confirmas que ya tomaste otra botella de ${name} (de las de venta) para cocteleria?`)) return;
+    if (!confirm(`¿Registrar que tomaste 1 botella de ${name} (de las de venta) para cocteleria?`)) return;
     setBusy(itemId);
     const { error } = await supabase.rpc('bar_stock_move', {
       p_event_id: event.id,
@@ -89,10 +86,6 @@ export const Bartender: React.FC<Props> = ({ event, events, eventId, onEvent, on
     });
     setBusy('');
     setMsg(error ? { ok: false, text: errText(error) } : { ok: true, text: `Registrado: 1 botella de ${name} pasó a cocteleria.` });
-    if (!error) {
-      reloadLevels();
-      window.dispatchEvent(new Event('403-levels'));
-    }
   };
 
   const recipes = useMemo(
@@ -103,20 +96,6 @@ export const Bartender: React.FC<Props> = ({ event, events, eventId, onEvent, on
         .filter(p => !search.trim() || p.name.toLowerCase().includes(search.trim().toLowerCase())),
     [products, spirit, search]
   );
-  const imageOf = (productId: string | null, name: string) =>
-    (products.find(p => p.id === productId) ?? products.find(p => p.name === name))?.image_url ?? null;
-  const productFor = (productId: string | null, name: string) => products.find(p => p.id === productId) ?? products.find(p => p.name === name);
-  // Botellas que gasta un pedido (ml por trago × cantidad).
-  const needsOf = (o: Order): BottleNeed[] => {
-    const m = new Map<string, number>();
-    for (const it of o.items) {
-      for (const ing of productFor(it.product_id, it.name)?.ingredients ?? []) {
-        m.set(ing.item_id, (m.get(ing.item_id) ?? 0) + Number(ing.ml) * it.qty);
-      }
-    }
-    return [...m.entries()].map(([itemId, ml]) => ({ itemId, ml }));
-  };
-  const itemNames = Object.fromEntries(items.map(i => [i.id, i.name]));
   const itemName = (id: string) => items.find(i => i.id === id)?.name ?? 'Licor';
   const openRecipe = (productId: string | null, name: string) =>
     setRecipe(products.find(p => p.id === productId) ?? products.find(p => p.name === name) ?? null);
@@ -138,13 +117,10 @@ export const Bartender: React.FC<Props> = ({ event, events, eventId, onEvent, on
         </button>
       </div>
 
-      <BottleAlerts levels={levels} products={products} onTake={takeBottle} busyId={busy} />
-
       {msg && <p className={`text-sm mb-3 ${msg.ok ? 'text-emerald-300' : 'text-red-300'}`}>{msg.text}</p>}
 
       {tab === 'pedidos' && (
         <>
-          <BottleShelf levels={levels} products={products} />
           {!online && (
             <p className="text-sm text-red-200 mb-3">Sin señal: los pedidos nuevos no llegan. El cajero te los dicta.</p>
           )}
@@ -166,21 +142,13 @@ export const Bartender: React.FC<Props> = ({ event, events, eventId, onEvent, on
                   <ul className="mt-3 space-y-1.5 flex-1">
                     {o.items.map(i => (
                       <li key={i.name}>
-                        <button className="text-left w-full flex items-center gap-2" onClick={() => openRecipe(i.product_id, i.name)}>
-                          {imageOf(i.product_id, i.name) && (
-                            <img src={imageOf(i.product_id, i.name)!} alt="" loading="lazy" className="w-11 h-11 rounded-lg object-cover shrink-0" />
-                          )}
-                          <span>
+                        <button className="text-left w-full" onClick={() => openRecipe(i.product_id, i.name)}>
                           <span className="text-xl font-semibold">{i.qty}×</span> <span className="text-lg">{i.name}</span>
                           <span className="text-[10px] text-gold ml-2 underline">receta</span>
-                          </span>
                         </button>
                       </li>
                     ))}
                   </ul>
-                  <div className="mt-3">
-                    <BottleNeeds needs={needsOf(o)} levels={levels} products={products} names={itemNames} onTake={takeBottle} busyId={busy} />
-                  </div>
                   <button className="btn btn-gold w-full mt-4" disabled={busy === o.id} onClick={() => deliver(o.id)}>
                     <CheckCircle2 className="w-5 h-5" /> Entregado
                   </button>
@@ -209,12 +177,9 @@ export const Bartender: React.FC<Props> = ({ event, events, eventId, onEvent, on
           </div>
           <div className="grid sm:grid-cols-2 gap-2.5">
             {recipes.map(p => (
-              <button key={p.id} className="card p-3 text-left flex items-center gap-3" onClick={() => setRecipe(p)}>
-                {p.image_url && <img src={p.image_url} alt="" loading="lazy" className="w-14 h-14 rounded-lg object-cover shrink-0" />}
-                <span>
-                  <span className="block font-semibold">{p.name}</span>
-                  <span className="block text-xs text-cream/50">{spiritLabel(p.spirit)}</span>
-                </span>
+              <button key={p.id} className="card p-4 text-left" onClick={() => setRecipe(p)}>
+                <p className="font-semibold">{p.name}</p>
+                <p className="text-xs text-cream/50">{spiritLabel(p.spirit)}</p>
               </button>
             ))}
           </div>
@@ -223,7 +188,6 @@ export const Bartender: React.FC<Props> = ({ event, events, eventId, onEvent, on
 
       {tab === 'botella' && (
         <div className="card p-4">
-          <BottleShelf levels={levels} products={products} defaultOpen />
           <p className="text-sm text-cream/70 mb-3">
             Si se acabó el licor de cocteleria y tomas una botella de las de venta, regístralo aquí. Así el inventario cuadra.
           </p>
@@ -250,7 +214,6 @@ export const Bartender: React.FC<Props> = ({ event, events, eventId, onEvent, on
       {recipe && (
         <div className="fixed inset-0 z-50 bg-black/85 flex items-end sm:items-center justify-center p-3" onClick={() => setRecipe(null)}>
           <div className="card w-full max-w-lg p-5 max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-            {recipe.image_url && <img src={recipe.image_url} alt={recipe.name} className="w-full h-48 object-cover rounded-xl mb-3" />}
             <p className="font-display text-2xl">{recipe.name}</p>
             <p className="text-xs text-gold mt-1">{spiritLabel(recipe.spirit)}</p>
             {recipe.ingredients && recipe.ingredients.length > 0 && (

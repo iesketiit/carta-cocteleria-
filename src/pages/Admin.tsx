@@ -1,9 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Plus, Pencil, Save, X, RefreshCw, Trash2, ImagePlus } from 'lucide-react';
+import { Plus, Pencil, Save, X, RefreshCw, Trash2 } from 'lucide-react';
 import { Shell } from '../components/Shell';
 import { useCatalog } from '../lib/catalog';
 import { supabase, errText } from '../lib/supabase';
-import { uploadProductImage } from '../lib/images';
 import { BarItem, BarProduct, EventLite } from '../lib/types';
 import { KINDS, SPIRITS, money, spiritLabel, PAY_LABEL, ROLE_LABEL } from '../lib/format';
 
@@ -44,8 +43,8 @@ export const Admin: React.FC<Props> = ({ event, events, eventId, onEvent, online
           </button>
         ))}
       </div>
-      {!online && <p className="text-sm text-red-200 mb-3">Sin señal: los cambios se guardan cuando vuelva la conexión.</p>}
-      {tab === 'carta' && <CartaTab event={event} {...catalog} goItems={() => setTab('botellas')} />}
+      {!online && <p className="text-sm text-red-200 mb-3">Sin señal: no se puede guardar nada aquí hasta que vuelva la conexión.</p>}
+      {tab === 'carta' && <CartaTab event={event} {...catalog} />}
       {tab === 'botellas' && <ItemsTab event={event} {...catalog} />}
       {tab === 'inventario' && <InventarioTab event={event} items={catalog.items} />}
       {tab === 'cierre' && <CierreTab event={event} />}
@@ -65,108 +64,21 @@ const emptyProduct = (): BarProduct => ({
   bottle_item_id: null,
   recipe: '',
   description: '',
-  image_url: null,
   active: true,
   sort: 0,
-  ingredients: [{ item_id: '', ml: 60 }],
+  ingredients: [],
 });
 
-// Crear una botella sin salir del producto: nombre + ml (obligatorios).
-const QuickBottle: React.FC<{
-  event: EventLite;
-  spirit: string;
-  reload: () => void;
-  onCreated: (id: string) => void;
-  onClose: () => void;
-}> = ({ event, spirit, reload, onCreated, onClose }) => {
-  const [name, setName] = useState('');
-  const [ml, setMl] = useState(0);
-  const [price, setPrice] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState('');
-  const create = async () => {
-    setBusy(true);
-    setErr('');
-    const { data, error } = await supabase.rpc('bar_save_item', {
-      p_event_id: event.id,
-      p_id: null,
-      p_name: name,
-      p_spirit: spirit,
-      p_bottle_ml: ml,
-      p_bottle_price: price ? Number(price) : null,
-      p_active: true,
-    });
-    setBusy(false);
-    if (error) return setErr(errText(error));
-    reload();
-    onCreated(data as string);
-    onClose();
-  };
-  return (
-    <div className="rounded-xl border border-gold/40 bg-black/40 p-3 space-y-2">
-      <p className="text-sm text-gold-soft">Nueva botella</p>
-      <input className="input" placeholder="Ej. Jack Daniel's" value={name} onChange={e => setName(e.target.value)} />
-      <div className="flex gap-2 items-center">
-        <input
-          className="input !w-32"
-          inputMode="numeric"
-          placeholder="ml (ej. 750)"
-          value={ml ? String(ml) : ''}
-          onChange={e => setMl(Number(e.target.value.replace(/\D/g, '')) || 0)}
-        />
-        <span className="text-xs text-cream/50">ml que trae la botella (obligatorio)</span>
-      </div>
-      <div className="flex flex-wrap gap-2">
-        {[375, 700, 750, 1000].map(v => (
-          <button key={v} type="button" className={`chip ${ml === v ? 'chip-on' : ''}`} onClick={() => setMl(v)}>
-            {v} ml
-          </button>
-        ))}
-      </div>
-      {err && <p className="text-sm text-red-300">{err}</p>}
-      <div className="flex gap-2">
-        <button className="btn btn-gold !py-2 text-sm" disabled={busy || !name.trim() || ml <= 0} onClick={create}>
-          {busy ? 'Creando…' : 'Crear botella'}
-        </button>
-        <button className="btn btn-ghost !py-2 text-sm" onClick={onClose}>
-          Cancelar
-        </button>
-      </div>
-    </div>
-  );
-};
-
-const CartaTab: React.FC<{ event: EventLite; products: BarProduct[]; items: BarItem[]; reload: () => void; goItems: () => void }> = ({
+const CartaTab: React.FC<{ event: EventLite; products: BarProduct[]; items: BarItem[]; reload: () => void }> = ({
   event,
   products,
-  items: allItems,
+  items,
   reload,
-  goItems,
 }) => {
-  // Solo botellas reales (con ml cargados y activas).
-  const items = allItems.filter(i => i.active && Number(i.bottle_ml) > 0);
   const [form, setForm] = useState<BarProduct | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
   const [filter, setFilter] = useState('todos');
-  const [uploading, setUploading] = useState(false);
-  const [quick, setQuick] = useState(false);
-  useEffect(() => {
-    if (!form) setQuick(false);
-  }, [form]);
-
-  const pickImage = async (file: File | undefined) => {
-    if (!file || !form) return;
-    setUploading(true);
-    setMsg('');
-    try {
-      const url = await uploadProductImage(event.id, file);
-      setForm(f => (f ? { ...f, image_url: url } : f));
-    } catch (e) {
-      setMsg((e as Error).message);
-    }
-    setUploading(false);
-  };
 
   const save = async () => {
     if (!form) return;
@@ -185,7 +97,6 @@ const CartaTab: React.FC<{ event: EventLite; products: BarProduct[]; items: BarI
       p_active: form.active,
       p_sort: Number(form.sort) || 0,
       p_ingredients: form.kind === 'botella' ? [] : (form.ingredients ?? []).map(i => ({ itemId: i.item_id, ml: i.ml })),
-      p_image_url: form.image_url || null,
     });
     setBusy(false);
     if (error) setMsg(errText(error));
@@ -194,23 +105,6 @@ const CartaTab: React.FC<{ event: EventLite; products: BarProduct[]; items: BarI
       reload();
     }
   };
-
-  const remove = async () => {
-    if (!form?.id) return;
-    if (!confirm(`¿Eliminar "${form.name}" de la carta? Los pedidos ya vendidos se conservan.`)) return;
-    setBusy(true);
-    setMsg('');
-    const { error } = await supabase.rpc('bar_delete_product', { p_id: form.id });
-    setBusy(false);
-    if (error) setMsg(errText(error));
-    else {
-      setForm(null);
-      reload();
-    }
-  };
-
-  const needsMl = (p: Pick<BarProduct, 'kind' | 'ingredients'>) =>
-    (p.kind === 'coctel' || p.kind === 'shot') && !(p.ingredients ?? []).some(i => i.item_id && Number(i.ml) > 0);
 
   const list = products.filter(p => filter === 'todos' || p.spirit === filter || p.kind === filter);
 
@@ -222,43 +116,9 @@ const CartaTab: React.FC<{ event: EventLite; products: BarProduct[]; items: BarI
         <Field label="Nombre">
           <input className="input" value={form.name} onChange={e => set({ name: e.target.value })} placeholder="Ej. Whisky Sour" />
         </Field>
-        <div>
-          <p className="text-xs text-cream/60 mb-1">Foto (se ve en la barra y en las recetas)</p>
-          <div className="flex items-center gap-3">
-            {form.image_url ? (
-              <img src={form.image_url} alt="" className="w-24 h-24 rounded-xl object-cover border border-gold/30" />
-            ) : (
-              <div className="w-24 h-24 rounded-xl border border-dashed border-gold/30 flex items-center justify-center text-cream/30">
-                <ImagePlus className="w-6 h-6" />
-              </div>
-            )}
-            <div className="flex flex-col gap-2">
-              <label className={`btn btn-ghost !py-2 text-sm cursor-pointer ${uploading ? 'opacity-50 pointer-events-none' : ''}`}>
-                <ImagePlus className="w-4 h-4" /> {uploading ? 'Subiendo…' : form.image_url ? 'Cambiar foto' : 'Subir foto'}
-                <input
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  className="hidden"
-                  onChange={e => {
-                    pickImage(e.target.files?.[0]);
-                    e.target.value = '';
-                  }}
-                />
-              </label>
-              {form.image_url && (
-                <button className="text-xs text-cream/50 underline text-left" onClick={() => set({ image_url: null })}>
-                  Quitar foto
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Tipo">
-            <select className="input" value={form.kind} onChange={e => {
-                const kind = e.target.value as BarProduct['kind'];
-                set({ kind, ingredients: (form.ingredients ?? []).length || kind === 'botella' ? form.ingredients : [{ item_id: '', ml: 60 }] });
-              }}>
+            <select className="input" value={form.kind} onChange={e => set({ kind: e.target.value as BarProduct['kind'] })}>
               {KINDS.map(k => (
                 <option key={k.key} value={k.key}>
                   {k.label}
@@ -280,7 +140,7 @@ const CartaTab: React.FC<{ event: EventLite; products: BarProduct[]; items: BarI
               className="input"
               inputMode="decimal"
               value={String(form.price)}
-              onChange={e => set({ price: e.target.value.replace(/[^\d.]/g, '') as unknown as number })}
+              onChange={e => set({ price: e.target.value.replace(',', '.').replace(/[^\d.]/g, '') as unknown as number })}
             />
           </Field>
           <Field label="Orden en la carta">
@@ -289,68 +149,21 @@ const CartaTab: React.FC<{ event: EventLite; products: BarProduct[]; items: BarI
         </div>
 
         {form.kind === 'botella' ? (
-          <div className="space-y-2">
-            <Field label="¿Qué botella del inventario se vende?">
-              <select className="input" value={form.bottle_item_id ?? ''} onChange={e => set({ bottle_item_id: e.target.value || null })}>
-                <option value="">— Elige —</option>
-                {items.map(i => (
-                  <option key={i.id} value={i.id}>
-                    {i.name} · botella de {i.bottle_ml} ml
-                  </option>
-                ))}
-              </select>
-            </Field>
-            {(() => {
-              const it = items.find(x => x.id === form.bottle_item_id);
-              return it ? <p className="text-[11px] text-cream/50">Se vende la botella entera de {it.bottle_ml} ml.</p> : null;
-            })()}
-            {!form.bottle_item_id && <p className="text-sm text-amber-200">Elige una botella real (o crea una abajo con sus ml) para poder guardar.</p>}
-            {quick ? (
-              <QuickBottle event={event} spirit={form.spirit} reload={reload} onClose={() => setQuick(false)} onCreated={id => set({ bottle_item_id: id })} />
-            ) : (
-              <button className="btn btn-ghost !py-2 text-sm" onClick={() => setQuick(true)}>
-                <Plus className="w-4 h-4" /> Crear botella nueva (con sus ml)
-              </button>
-            )}
-          </div>
+          <Field label="¿Qué botella del inventario se vende?">
+            <select className="input" value={form.bottle_item_id ?? ''} onChange={e => set({ bottle_item_id: e.target.value || null })}>
+              <option value="">— Elige —</option>
+              {items.map(i => (
+                <option key={i.id} value={i.id}>
+                  {i.name}
+                </option>
+              ))}
+            </select>
+          </Field>
         ) : (
           <div>
-            <p className="text-sm text-gold-soft mb-0.5">¿Con qué botella se hace y cuántos ml lleva cada trago?</p>
-            <p className="text-xs text-cream/60 mb-2">
-              Elige la botella (se ve su tamaño) y escribe los ml por trago. Cada venta resta esos ml de esa botella y el bartender y la caja ven lo que queda.
-            </p>
-            {items.length === 0 && (
-              <div className="rounded-xl border border-amber-400/50 bg-amber-950/30 p-3 mb-2">
-                <p className="text-sm text-amber-200">Todavía no hay botellas cargadas. Crea una abajo (con sus ml) o cárgalas en "Licores"; sin una botella real no puedes seguir.</p>
-                <button className="text-xs text-gold underline mt-1" onClick={goItems}>
-                  Ir a "Licores"
-                </button>
-              </div>
-            )}
-            {quick ? (
-              <div className="mb-2">
-                <QuickBottle
-                  event={event}
-                  spirit={form.spirit}
-                  reload={reload}
-                  onClose={() => setQuick(false)}
-                  onCreated={id => {
-                    const rows = form.ingredients ?? [];
-                    const empty = rows.findIndex(r => !r.item_id);
-                    set({
-                      ingredients: empty >= 0 ? rows.map((r, i) => (i === empty ? { ...r, item_id: id } : r)) : [...rows, { item_id: id, ml: 60 }],
-                    });
-                  }}
-                />
-              </div>
-            ) : (
-              <button className="btn btn-ghost !py-2 text-sm mb-2" onClick={() => setQuick(true)}>
-                <Plus className="w-4 h-4" /> Crear botella nueva (con sus ml)
-              </button>
-            )}
+            <p className="text-xs text-cream/60 mb-1">Ingredientes que descuentan inventario (ml por trago)</p>
             {(form.ingredients ?? []).map((ing, idx) => (
-              <div key={idx} className="mb-3">
-              <div className="flex gap-2">
+              <div key={idx} className="flex gap-2 mb-2">
                 <select
                   className="input"
                   value={ing.item_id}
@@ -360,10 +173,10 @@ const CartaTab: React.FC<{ event: EventLite; products: BarProduct[]; items: BarI
                     set({ ingredients: next });
                   }}
                 >
-                  <option value="">— Botella —</option>
+                  <option value="">— Licor —</option>
                   {items.map(i => (
                     <option key={i.id} value={i.id}>
-                      {i.name} · botella de {i.bottle_ml} ml
+                      {i.name}
                     </option>
                   ))}
                 </select>
@@ -373,31 +186,17 @@ const CartaTab: React.FC<{ event: EventLite; products: BarProduct[]; items: BarI
                   value={String(ing.ml)}
                   onChange={e => {
                     const next = [...(form.ingredients ?? [])];
-                    next[idx] = { ...ing, ml: Number(e.target.value.replace(/[^\d.]/g, '')) || 0 };
+                    next[idx] = { ...ing, ml: Number(e.target.value.replace(',', '.').replace(/[^\d.]/g, '')) || 0 };
                     set({ ingredients: next });
                   }}
                   placeholder="ml"
-                  aria-label="ml por trago"
                 />
-                <span className="self-center text-xs text-cream/50 -ml-1">ml</span>
                 <button className="btn btn-ghost !px-3" onClick={() => set({ ingredients: (form.ingredients ?? []).filter((_, i) => i !== idx) })}>
                   <X className="w-4 h-4" />
                 </button>
               </div>
-              {(() => {
-                const it = items.find(x => x.id === ing.item_id);
-                if (!it) return null;
-                const ml = Number(ing.ml) || 0;
-                return (
-                  <p className="text-[11px] text-cream/50 mt-1">
-                    Botella de {it.bottle_ml} ml
-                    {ml > 0 && ` · cada trago gasta ${ml} ml · rinde ≈ ${Math.floor(it.bottle_ml / ml)} tragos por botella`}
-                  </p>
-                );
-              })()}
-              </div>
             ))}
-            <button className="btn btn-ghost !py-2 text-sm" disabled={items.length === 0} onClick={() => set({ ingredients: [...(form.ingredients ?? []), { item_id: '', ml: 60 }] })}>
+            <button className="btn btn-ghost !py-2 text-sm" onClick={() => set({ ingredients: [...(form.ingredients ?? []), { item_id: '', ml: 60 }] })}>
               <Plus className="w-4 h-4" /> Agregar licor
             </button>
           </div>
@@ -416,24 +215,14 @@ const CartaTab: React.FC<{ event: EventLite; products: BarProduct[]; items: BarI
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={form.active} onChange={e => set({ active: e.target.checked })} /> Se vende (visible en la barra)
         </label>
-        {needsMl(form) && (
-          <p className="text-sm text-amber-200">
-            Falta el licor y los ml por trago. Es obligatorio en cócteles y shots: así la botellita se gasta bien y avisa cuándo traer otra.
-          </p>
-        )}
         {msg && <p className="text-sm text-red-300">{msg}</p>}
         <div className="flex gap-2">
-          <button className="btn btn-gold" disabled={busy || uploading || !form.name.trim() || needsMl(form) || (form.kind === 'botella' && !form.bottle_item_id)} onClick={save}>
+          <button className="btn btn-gold" disabled={busy || !form.name.trim()} onClick={save}>
             <Save className="w-4 h-4" /> {busy ? 'Guardando…' : 'Guardar'}
           </button>
           <button className="btn btn-ghost" onClick={() => setForm(null)}>
             Cancelar
           </button>
-          {form.id && (
-            <button className="btn btn-ghost ml-auto text-red-300" disabled={busy} onClick={remove}>
-              <Trash2 className="w-4 h-4" /> Eliminar
-            </button>
-          )}
         </div>
       </div>
     );
@@ -464,9 +253,7 @@ const CartaTab: React.FC<{ event: EventLite; products: BarProduct[]; items: BarI
       )}
       <div className="grid sm:grid-cols-2 gap-2">
         {list.map(p => (
-          <button key={p.id} className={`card p-3 text-left flex gap-3 ${p.active ? '' : 'opacity-50'}`} onClick={() => setForm({ ...p, ingredients: (p.ingredients ?? []).length || p.kind === 'botella' ? p.ingredients : [{ item_id: '', ml: 60 }] })}>
-            {p.image_url && <img src={p.image_url} alt="" loading="lazy" className="w-14 h-14 rounded-lg object-cover shrink-0" />}
-            <div className="flex-1 min-w-0">
+          <button key={p.id} className={`card p-3 text-left ${p.active ? '' : 'opacity-50'}`} onClick={() => setForm({ ...p })}>
             <div className="flex justify-between gap-2">
               <span className="font-semibold">{p.name}</span>
               <span className="text-gold-soft">{money(p.price, event.currency)}</span>
@@ -475,10 +262,8 @@ const CartaTab: React.FC<{ event: EventLite; products: BarProduct[]; items: BarI
               {KINDS.find(k => k.key === p.kind)?.label} · {spiritLabel(p.spirit)}
               {p.kind !== 'botella' && ` · ${(p.ingredients ?? []).reduce((s, i) => s + i.ml, 0)} ml de licor`}
               {!p.active && ' · oculto'}
-              {needsMl(p) && <span className="text-amber-300"> · ⚠ faltan ml</span>}
               <Pencil className="w-3 h-3 inline ml-2" />
             </p>
-            </div>
           </button>
         ))}
       </div>
@@ -491,13 +276,13 @@ const ItemsTab: React.FC<{ event: EventLite; items: BarItem[]; reload: () => voi
   const [form, setForm] = useState<Partial<BarItem> | null>(null);
   const [msg, setMsg] = useState('');
   const save = async () => {
-    if (!form?.name?.trim() || !(Number(form.bottle_ml) > 0)) return;
+    if (!form?.name?.trim()) return;
     const { error } = await supabase.rpc('bar_save_item', {
       p_event_id: event.id,
       p_id: form.id || null,
       p_name: form.name,
       p_spirit: form.spirit || 'otro',
-      p_bottle_ml: Number(form.bottle_ml) || 0,
+      p_bottle_ml: Number(form.bottle_ml) || 750,
       p_bottle_price: form.bottle_price ? Number(form.bottle_price) : null,
       p_active: form.active ?? true,
     });
@@ -528,33 +313,21 @@ const ItemsTab: React.FC<{ event: EventLite; items: BarItem[]; reload: () => voi
                 ))}
               </select>
             </Field>
-            <Field label="ml que trae la botella (obligatorio)">
+            <Field label="ml por botella">
               <input
                 className="input"
                 inputMode="numeric"
-                placeholder="Ej. 750"
-                value={form.bottle_ml ? String(form.bottle_ml) : ''}
+                value={String(form.bottle_ml ?? 750)}
                 onChange={e => setForm({ ...form, bottle_ml: Number(e.target.value.replace(/\D/g, '')) || 0 })}
               />
             </Field>
           </div>
-          <div className="flex flex-wrap gap-2 items-center -mt-1">
-            <span className="text-xs text-cream/50">Tamaños comunes:</span>
-            {[375, 700, 750, 1000].map(ml => (
-              <button key={ml} type="button" className={`chip ${Number(form.bottle_ml) === ml ? 'chip-on' : ''}`} onClick={() => setForm({ ...form, bottle_ml: ml })}>
-                {ml} ml
-              </button>
-            ))}
-          </div>
-          {!(Number(form.bottle_ml) > 0) && (
-            <p className="text-sm text-amber-200">Escribe cuántos ml trae la botella. Sin eso no se puede guardar ni usar en cócteles.</p>
-          )}
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={form.active ?? true} onChange={e => setForm({ ...form, active: e.target.checked })} /> Activo
           </label>
           {msg && <p className="text-sm text-red-300">{msg}</p>}
           <div className="flex gap-2">
-            <button className="btn btn-gold" disabled={!form.name?.trim() || !(Number(form.bottle_ml) > 0)} onClick={save}>
+            <button className="btn btn-gold" onClick={save}>
               <Save className="w-4 h-4" /> Guardar
             </button>
             <button className="btn btn-ghost" onClick={() => setForm(null)}>
@@ -564,7 +337,7 @@ const ItemsTab: React.FC<{ event: EventLite; items: BarItem[]; reload: () => voi
         </div>
       ) : (
         <>
-          <button className="btn btn-gold !py-2 mb-3" onClick={() => setForm({ spirit: 'whisky', bottle_ml: 0, active: true })}>
+          <button className="btn btn-gold !py-2 mb-3" onClick={() => setForm({ spirit: 'whisky', bottle_ml: 750, active: true })}>
             <Plus className="w-4 h-4" /> Nuevo licor
           </button>
           <div className="grid sm:grid-cols-2 gap-2">
@@ -673,9 +446,9 @@ const InventarioTab: React.FC<{ event: EventLite; items: BarItem[] }> = ({ event
             <option value="cocteleria">Cocteleria</option>
             <option value="venta">Venta de botella</option>
           </select>
-          <input className="input" inputMode="decimal" placeholder="Botellas" value={qty} onChange={e => setQty(e.target.value.replace(/[^\d.-]/g, ''))} />
+          <input className="input" inputMode="decimal" placeholder="Botellas" value={qty} onChange={e => setQty(e.target.value.replace(',', '.').replace(/[^\d.-]/g, ''))} />
           {kind !== 'carga' && (
-            <input className="input" inputMode="decimal" placeholder="ml sueltos" value={ml} onChange={e => setMl(e.target.value.replace(/[^\d.-]/g, ''))} />
+            <input className="input" inputMode="decimal" placeholder="ml sueltos" value={ml} onChange={e => setMl(e.target.value.replace(',', '.').replace(/[^\d.-]/g, ''))} />
           )}
           <input className="input sm:col-span-3" placeholder={kind === 'ajuste' ? 'Motivo (obligatorio)' : 'Nota (opcional)'} value={note} onChange={e => setNote(e.target.value)} />
         </div>

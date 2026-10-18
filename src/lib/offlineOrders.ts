@@ -40,17 +40,37 @@ export const syncOrders = async (): Promise<void> => {
   try {
     for (const o of read()) {
       if (o.error) continue;
-      const { data, error } = await supabase.rpc('bar_create_order', {
-        p_id: o.id,
-        p_event_id: o.eventId,
-        p_payment_method: o.payment,
-        p_items: o.items.map(i => ({ productId: i.productId, qty: i.qty })),
-        p_created_at: o.createdAt,
-      });
+      // Sin respuesta en 12 s = señal mala: se corta y se reintenta luego
+      // (el id del pedido evita duplicados si sí había llegado).
+      const ctrl = new AbortController();
+      const timer = window.setTimeout(() => ctrl.abort(), 12000);
+      let data: unknown = null;
+      let error: { message?: string; code?: string } | null = null;
+      try {
+        const res = await supabase
+          .rpc('bar_create_order', {
+            p_id: o.id,
+            p_event_id: o.eventId,
+            p_payment_method: o.payment,
+            p_items: o.items.map(i => ({ productId: i.productId, qty: i.qty })),
+            p_created_at: o.createdAt,
+          })
+          .abortSignal(ctrl.signal);
+        data = res.data;
+        error = res.error;
+      } catch (e) {
+        error = { message: e instanceof Error ? e.message : String(e) };
+      } finally {
+        window.clearTimeout(timer);
+      }
       if (error) {
-        const text = errText(error);
-        if (text.startsWith('Sin conexión')) break; // se reintenta luego
-        write(read().map(x => (x.id === o.id ? { ...x, error: text } : x)));
+        // Solo los rechazos de la base (código P0001, ej. producto que ya no
+        // existe) son definitivos. Señal, servidor caído, sesión vencida o
+        // sin permiso momentáneo: se queda en cola y se reintenta.
+        const msg = error.message || '';
+        const permanent = error.code === 'P0001' && !/NOT_AUTHORIZED/.test(msg);
+        if (!permanent) break;
+        write(read().map(x => (x.id === o.id ? { ...x, error: errText(error) } : x)));
         continue;
       }
       write(read().filter(x => x.id !== o.id));
@@ -64,6 +84,12 @@ export const syncOrders = async (): Promise<void> => {
 };
 
 export const discardOrder = (id: string) => write(read().filter(x => x.id !== id));
+
+// Volver a intentar un pedido que la base rechazó (ej. después de arreglar la carta).
+export const retryOrder = (id: string) => {
+  write(read().map(x => (x.id === id ? { ...x, error: undefined } : x)));
+  void syncOrders();
+};
 
 export const useOrderQueue = () => {
   const [queue, setQueue] = useState<QueuedOrder[]>(read);

@@ -3,7 +3,7 @@ import { Search, CheckCircle2, UserRound, Banknote, RefreshCw } from 'lucide-rea
 import { Shell } from '../components/Shell';
 import { supabase, errText } from '../lib/supabase';
 import { EventLite } from '../lib/types';
-import { money } from '../lib/format';
+import { money, uuid } from '../lib/format';
 
 interface Props {
   event: EventLite;
@@ -47,6 +47,9 @@ export const Caja: React.FC<Props> = ({ event, events, eventId, onEvent, online,
   const [results, setResults] = useState<Person[]>([]);
   const [searching, setSearching] = useState(false);
   const [person, setPerson] = useState<Person | null>(null);
+  // Id de este cobro: si se corta la señal y el cajero vuelve a tocar
+  // "Cobrar", se manda el mismo y la base no crea una segunda entrada.
+  const [saleId, setSaleId] = useState(uuid);
   const [tiers, setTiers] = useState<Tier[]>([]);
   const [tierId, setTierId] = useState('');
   const [qty, setQty] = useState(1);
@@ -97,6 +100,7 @@ export const Caja: React.FC<Props> = ({ event, events, eventId, onEvent, online,
   const change = receivedNum - total;
 
   const pick = (p: Person) => {
+    setSaleId(uuid());
     setPerson(p);
     setTierId('');
     setQty(1);
@@ -120,18 +124,41 @@ export const Caja: React.FC<Props> = ({ event, events, eventId, onEvent, online,
       return;
     setBusy(true);
     setError('');
-    const { data, error } = await supabase.rpc('cash_sell_ticket', {
+    const args = {
       p_user_id: person.userId,
       p_event_id: event.id,
       p_tier_id: tier.id,
       p_quantity: isPalco ? 1 : qty,
       p_note: 'Efectivo · caja',
-    });
+    };
+    const ctrl = new AbortController();
+    const timer = window.setTimeout(() => ctrl.abort(), 15000);
+    let data: unknown = null;
+    let error: { message?: string; code?: string } | null = null;
+    try {
+      let res = await supabase.rpc('cash_sell_ticket_once', { p_client_id: saleId, ...args }).abortSignal(ctrl.signal);
+      // Si aún no se corrió el SQL nuevo, usa el cobro de siempre.
+      if (res.error && (res.error.code === 'PGRST202' || /cash_sell_ticket_once/.test(res.error.message))) {
+        res = await supabase.rpc('cash_sell_ticket', args).abortSignal(ctrl.signal);
+      }
+      data = res.data;
+      error = res.error;
+    } catch (e) {
+      error = { message: e instanceof Error ? e.message : String(e) };
+    } finally {
+      window.clearTimeout(timer);
+    }
     setBusy(false);
     if (error) {
-      setError(errText(error));
+      const offline = error.code !== 'P0001';
+      setError(
+        offline
+          ? 'No hubo respuesta (señal). NO cobres de nuevo todavía: toca "Cobrar" otra vez cuando vuelva la señal — si ya se registró, no se duplica.'
+          : errText(error)
+      );
       return;
     }
+    setSaleId(uuid());
     const r = data as { people: number; total: number; tierName: string };
     setDone({ name: person.name, tier: r.tierName, people: r.people, total: r.total });
     setPerson(null);

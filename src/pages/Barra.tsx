@@ -1,11 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Minus, Plus, Trash2, CheckCircle2, CloudOff, RefreshCw, AlertTriangle } from 'lucide-react';
+import { Minus, Plus, Trash2, CheckCircle2, CloudOff, RefreshCw, AlertTriangle, BarChart3 } from 'lucide-react';
 import { Shell } from '../components/Shell';
 import { useCatalog } from '../lib/catalog';
-import { enqueueOrder, syncOrders, useOrderQueue, discardOrder } from '../lib/offlineOrders';
-import { useBottleLevels } from '../lib/bottles';
-import { BottleAlerts, BottleNeeds, BottleShelf, currentMl, BottleNeed } from '../components/BottleMeter';
-import { MiCaja } from '../components/MiCaja';
+import { enqueueOrder, syncOrders, useOrderQueue, discardOrder, retryOrder } from '../lib/offlineOrders';
+import { supabase } from '../lib/supabase';
 import { CartLine, EventLite, PayMethod } from '../lib/types';
 import { money, SPIRITS, PAY_LABEL, uuid } from '../lib/format';
 
@@ -23,15 +21,16 @@ type Section = 'coctel' | 'botella' | 'sin_alcohol';
 const SECTION_LABEL: Record<Section, string> = { coctel: 'Cócteles y shots', botella: 'Botellas', sin_alcohol: 'Sin alcohol' };
 
 export const Barra: React.FC<Props> = ({ event, events, eventId, onEvent, online, onBack }) => {
-  const { products, items, reload, loading } = useCatalog(event.id);
+  const { products, reload, loading } = useCatalog(event.id);
   const { pending, failed } = useOrderQueue();
-  const { levels } = useBottleLevels(event.id);
   const [section, setSection] = useState<Section>('coctel');
   const [spirit, setSpirit] = useState<string>('todos');
   const [cart, setCart] = useState<CartLine[]>([]);
   const [pay, setPay] = useState<PayMethod>('efectivo');
   const [received, setReceived] = useState('');
   const [last, setLast] = useState<{ id: string; total: number; number?: number; lines: CartLine[] } | null>(null);
+  const [showSummary, setShowSummary] = useState(false);
+  const [summary, setSummary] = useState<{ cashier: string; method: string; orders: number; total: number }[]>([]);
 
   // Número del pedido cuando llega a la base.
   useEffect(() => {
@@ -49,18 +48,6 @@ export const Barra: React.FC<Props> = ({ event, events, eventId, onEvent, online
   );
   const spiritsHere = SPIRITS.filter(s => inSection.some(p => p.spirit === s.key));
   const visible = spirit === 'todos' ? inSection : inSection.filter(p => p.spirit === spirit);
-
-  // Botellas que gasta el pedido actual (ml por trago × cantidad).
-  const needs: BottleNeed[] = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const l of cart) {
-      for (const ing of products.find(p => p.id === l.productId)?.ingredients ?? []) {
-        m.set(ing.item_id, (m.get(ing.item_id) ?? 0) + Number(ing.ml) * l.qty);
-      }
-    }
-    return [...m.entries()].map(([itemId, ml]) => ({ itemId, ml }));
-  }, [cart, products]);
-  const itemNames = useMemo(() => Object.fromEntries(items.map(i => [i.id, i.name])), [items]);
 
   const total = useMemo(() => cart.reduce((s, l) => s + l.price * l.qty, 0), [cart]);
   const count = cart.reduce((s, l) => s + l.qty, 0);
@@ -94,6 +81,11 @@ export const Barra: React.FC<Props> = ({ event, events, eventId, onEvent, online
     syncOrders();
   };
 
+  const loadSummary = async () => {
+    const { data } = await supabase.rpc('bar_sales_summary', { p_event_id: event.id });
+    setSummary(((data as { byCashier: typeof summary })?.byCashier ?? []).map(r => ({ ...r, total: Number(r.total) })));
+  };
+
   return (
     <Shell
       title="Barra"
@@ -110,8 +102,6 @@ export const Barra: React.FC<Props> = ({ event, events, eventId, onEvent, online
         ) : null
       }
     >
-      <BottleAlerts levels={levels} products={products} />
-
       {failed.length > 0 && (
         <div className="card p-3 mb-3 border-red-400/40 text-sm">
           <p className="flex items-center gap-2 text-red-200">
@@ -122,9 +112,14 @@ export const Barra: React.FC<Props> = ({ event, events, eventId, onEvent, online
               <span>
                 {f.items.map(i => `${i.qty}× ${i.name}`).join(', ')} · {money(f.total, event.currency)} — {f.error}
               </span>
-              <button className="btn btn-ghost !py-1 !px-2" onClick={() => confirm('¿Descartar este pedido?') && discardOrder(f.id)}>
-                Descartar
-              </button>
+              <span className="flex gap-2 shrink-0">
+                <button className="btn btn-gold !py-2 !px-3" onClick={() => retryOrder(f.id)}>
+                  Reintentar
+                </button>
+                <button className="btn btn-ghost !py-2 !px-3" onClick={() => confirm('¿Descartar este pedido? Ya no se registrará.') && discardOrder(f.id)}>
+                  Descartar
+                </button>
+              </span>
             </div>
           ))}
         </div>
@@ -141,35 +136,10 @@ export const Barra: React.FC<Props> = ({ event, events, eventId, onEvent, online
               {last.lines.map(l => `${l.qty}× ${l.name}`).join(' · ')} · {money(last.total, event.currency)}
               {!last.number && ' · díctalo al bartender'}
             </p>
-            {(() => {
-              // Lo que queda en las botellas que usó esta venta.
-              const ids = new Set(last.lines.flatMap(l => (products.find(p => p.id === l.productId)?.ingredients ?? []).map(i => i.item_id)));
-              const used = levels.filter(b => ids.has(b.itemId));
-              return used.length ? (
-                <p className="text-xs text-gold-soft mt-1">
-                  Quedan: {used.map(b => `${b.name} ${b.status === 'empty' ? 'vacía' : `${currentMl(b)}/${b.bottleMl} ml`}`).join(' · ')}
-                </p>
-              ) : null;
-            })()}
           </div>
-          <div className="flex flex-col items-end gap-1 shrink-0">
-            {!last.number && (
-              <button
-                className="text-red-300 text-xs underline"
-                onClick={() => {
-                  if (confirm('¿Anular este pedido? Todavía no se ha enviado.')) {
-                    discardOrder(last.id);
-                    setLast(null);
-                  }
-                }}
-              >
-                Anular
-              </button>
-            )}
-            <button className="text-cream/50 text-xs underline" onClick={() => setLast(null)}>
-              Cerrar
-            </button>
-          </div>
+          <button className="text-cream/50 text-xs underline" onClick={() => setLast(null)}>
+            Cerrar
+          </button>
         </div>
       )}
 
@@ -205,8 +175,6 @@ export const Barra: React.FC<Props> = ({ event, events, eventId, onEvent, online
             </div>
           )}
 
-          <BottleShelf levels={levels} products={products} />
-
           {products.length === 0 ? (
             <div className="card p-6 text-center text-sm text-cream/60">
               Aún no hay carta para {event.city}. El administrador la carga en "Inventario y carta".
@@ -215,33 +183,18 @@ export const Barra: React.FC<Props> = ({ event, events, eventId, onEvent, online
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
               {visible.map(p => {
                 const inCart = cart.find(l => l.productId === p.id)?.qty ?? 0;
-                // Licores de este trago que se acabaron en cocteleria.
-                const outOf = (p.ingredients ?? [])
-                  .map(i => levels.find(b => b.itemId === i.item_id && b.status === 'empty'))
-                  .filter((b): b is NonNullable<typeof b> => !!b);
                 return (
                   <button
                     key={p.id}
                     onClick={() => add(p.id, p.name, p.price, 1)}
-                    className={`card relative overflow-hidden text-left flex flex-col justify-end active:scale-[0.98] transition ${
-                      p.image_url ? 'min-h-[150px]' : 'min-h-[96px] p-3.5 justify-between'
-                    } ${inCart ? 'border-gold' : ''}`}
+                    className={`card p-3.5 text-left min-h-[96px] flex flex-col justify-between active:scale-[0.98] transition ${
+                      inCart ? 'border-gold' : ''
+                    }`}
                   >
-                    {p.image_url && (
-                      <>
-                        <img src={p.image_url} alt="" loading="lazy" className="absolute inset-0 w-full h-full object-cover" />
-                        <span className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-black/5" />
-                      </>
-                    )}
-                    <span className={`relative flex flex-col ${p.image_url ? 'p-3' : 'flex-1 justify-between'}`}>
-                      <span className="font-semibold leading-tight drop-shadow">{p.name}</span>
-                      {outOf.length > 0 && (
-                        <span className="text-[10px] text-red-200 mt-0.5">Sin {outOf.map(b => b.name).join(', ')}</span>
-                      )}
-                      <span className="flex items-end justify-between mt-2">
-                        <span className="text-gold-soft font-display text-lg">{money(p.price, event.currency)}</span>
-                        {inCart > 0 && <span className="text-xs bg-wine px-2 py-0.5 rounded-full">×{inCart}</span>}
-                      </span>
+                    <span className="font-semibold leading-tight">{p.name}</span>
+                    <span className="flex items-end justify-between mt-2">
+                      <span className="text-gold-soft font-display text-lg">{money(p.price, event.currency)}</span>
+                      {inCart > 0 && <span className="text-xs bg-wine px-2 py-0.5 rounded-full">×{inCart}</span>}
                     </span>
                   </button>
                 );
@@ -269,15 +222,9 @@ export const Barra: React.FC<Props> = ({ event, events, eventId, onEvent, online
                   <span className="w-16 text-right text-sm text-gold-soft">{money(l.price * l.qty, event.currency)}</span>
                 </div>
               ))}
-              <button className="text-xs text-cream/40 flex items-center gap-1" onClick={() => setCart([])}>
+              <button className="text-xs text-cream/40 flex items-center gap-1" onClick={() => confirm('¿Vaciar el pedido?') && setCart([])}>
                 <Trash2 className="w-3 h-3" /> Vaciar
               </button>
-            </div>
-          )}
-
-          {needs.length > 0 && (
-            <div className="mt-3">
-              <BottleNeeds needs={needs} levels={levels} products={products} names={itemNames} />
             </div>
           )}
 
@@ -319,7 +266,28 @@ export const Barra: React.FC<Props> = ({ event, events, eventId, onEvent, online
             </button>
           </div>
 
-          <MiCaja eventId={event.id} currency={event.currency} online={online} pendingCount={pending} />
+          <button
+            className="mt-4 text-xs text-cream/50 flex items-center gap-1"
+            onClick={() => {
+              setShowSummary(s => !s);
+              if (!showSummary) loadSummary();
+            }}
+          >
+            <BarChart3 className="w-3.5 h-3.5" /> Mi caja de barra
+          </button>
+          {showSummary && (
+            <div className="mt-2 text-sm space-y-1">
+              {summary.length === 0 && <p className="text-cream/50 text-xs">Sin ventas registradas (o sin señal).</p>}
+              {summary.map(s => (
+                <div key={s.cashier + s.method} className="flex justify-between">
+                  <span>
+                    {s.cashier} · {PAY_LABEL[s.method] ?? s.method} · {s.orders}
+                  </span>
+                  <span className="text-gold-soft">{money(s.total, event.currency)}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </aside>
       </div>
     </Shell>
