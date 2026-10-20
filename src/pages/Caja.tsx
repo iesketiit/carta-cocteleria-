@@ -14,6 +14,16 @@ interface Props {
   onBack: () => void;
 }
 
+interface Reservation {
+  ticketId: string;
+  tierName: string;
+  people: number;
+  total: number;
+  currency: string;
+  pointName: string | null;
+  expiresAt: string;
+}
+
 interface Person {
   userId: string | null;
   name: string;
@@ -21,6 +31,8 @@ interface Person {
   phone: string | null;
   hasAccount: boolean;
   tickets: number;
+  /** Reservas hechas en la web para pagar en efectivo (24 h). */
+  reservations?: Reservation[];
 }
 
 interface Tier {
@@ -167,6 +179,50 @@ export const Caja: React.FC<Props> = ({ event, events, eventId, onEvent, online,
     loadSummary();
   };
 
+  // Reserva hecha en la web ("Efectivo en local"): se cobra el valor
+  // reservado y se activa esa misma compra (no se crea otra).
+  const confirmReservation = async (r: Reservation) => {
+    if (!person) return;
+    if (
+      !confirm(
+        `¿Cobrar ${money(r.total, r.currency || event.currency)} en EFECTIVO a ${person.name}?\n\nReserva: ${r.tierName} · ${r.people} ${
+          r.people === 1 ? 'persona' : 'personas'
+        }`
+      )
+    )
+      return;
+    setBusy(true);
+    setError('');
+    const ctrl = new AbortController();
+    const timer = window.setTimeout(() => ctrl.abort(), 15000);
+    let data: unknown = null;
+    let error: { message?: string; code?: string } | null = null;
+    try {
+      const res = await supabase.rpc('cash_confirm_reservation', { p_ticket_id: r.ticketId }).abortSignal(ctrl.signal);
+      data = res.data;
+      error = res.error;
+    } catch (e) {
+      error = { message: e instanceof Error ? e.message : String(e) };
+    } finally {
+      window.clearTimeout(timer);
+    }
+    setBusy(false);
+    if (error) {
+      setError(
+        error.code !== 'P0001'
+          ? 'No hubo respuesta (señal). Toca "Cobrar reserva" otra vez cuando vuelva la señal — no se cobra dos veces.'
+          : errText(error)
+      );
+      return;
+    }
+    const d = data as { people?: number; total: number; tierName: string };
+    setDone({ name: person.name, tier: d.tierName, people: d.people ?? r.people, total: Number(d.total) || r.total });
+    setPerson(null);
+    setQuery('');
+    setResults([]);
+    loadSummary();
+  };
+
   const mine = useMemo(() => summary.reduce((s, r) => s + Number(r.total || 0), 0), [summary]);
 
   return (
@@ -223,6 +279,11 @@ export const Caja: React.FC<Props> = ({ event, events, eventId, onEvent, online,
                   {p.tickets > 0 ? ` · ya tiene ${p.tickets} entrada(s)` : ''}
                   {!p.hasAccount ? ' · sin cuenta todavía' : ''}
                 </p>
+                {!!p.reservations?.length && (
+                  <p className="text-xs text-emerald-300 mt-1 flex items-center gap-1.5">
+                    <Banknote className="w-3.5 h-3.5" /> Tiene reserva para pagar en efectivo
+                  </p>
+                )}
               </button>
             ))}
           </div>
@@ -240,6 +301,29 @@ export const Caja: React.FC<Props> = ({ event, events, eventId, onEvent, online,
               Cambiar
             </button>
           </div>
+
+          {!!person.reservations?.length && (
+            <div className="space-y-2">
+              {person.reservations.map(r => (
+                <div key={r.ticketId} className="p-4 rounded-xl border border-emerald-500/40 bg-emerald-950/20 space-y-2">
+                  <p className="text-xs uppercase tracking-wider text-emerald-300">Reserva hecha en la web</p>
+                  <p className="font-semibold">
+                    {r.tierName} · {r.people} {r.people === 1 ? 'persona' : 'personas'}
+                  </p>
+                  <p className="text-xs text-cream/55">
+                    {r.pointName ? `Eligió pagar en ${r.pointName} · ` : ''}vence{' '}
+                    {new Date(r.expiresAt).toLocaleString('es-EC', { weekday: 'short', hour: '2-digit', minute: '2-digit' })}
+                  </p>
+                  <button className="btn btn-gold w-full text-lg" disabled={busy || !online} onClick={() => confirmReservation(r)}>
+                    <Banknote className="w-5 h-5" />
+                    {busy ? 'Cobrando…' : `Cobrar reserva ${money(r.total, r.currency || event.currency)}`}
+                  </button>
+                </div>
+              ))}
+              {error && <p className="text-sm text-red-300">{error}</p>}
+              <p className="text-[11px] text-cream/45">Si quiere otra localidad o más entradas, véndele abajo como venta nueva.</p>
+            </div>
+          )}
 
           <div>
             <p className="text-xs text-cream/60 mb-2">Localidad</p>

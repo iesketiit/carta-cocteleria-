@@ -24,21 +24,8 @@ const ERRORS: Record<string, string> = {
   INVALID_PRODUCT: 'Revisa el nombre y el precio.',
   NOTE_REQUIRED: 'Escribe el motivo del ajuste.',
   INVALID_QTY: 'Cantidad no válida.',
-  REQUEST_NOT_FOUND: 'Esa solicitud ya no existe.',
-  ALREADY_DECIDED: 'Otra persona ya decidió esta solicitud.',
-  NOT_DECIDED: 'Esa solicitud todavía no está decidida.',
-  RADICADO_FAILED: 'No se pudo crear el radicado. Intenta de nuevo.',
-  ALREADY_PAID: 'Esta persona ya está cobrada.',
-  NOT_ACCEPTED: 'Esta persona no está aceptada.',
-  NOT_PAID: 'Este cobro ya no está marcado como cobrado.',
-  RADICADO_MISMATCH: 'El radicado no coincide. Pídele que te muestre su mensaje de WhatsApp.',
-  RECIPE_ML_REQUIRED: 'Un cóctel o shot necesita al menos un licor con sus ml por trago.',
-  BOTTLE_ML_REQUIRED: 'Escribe cuántos ml trae la botella.',
-  BOTTLE_REQUIRED: 'Elige una botella real del inventario (o crea una con sus ml).',
-  INVALID_IMAGE: 'Esa foto no es válida. Súbela de nuevo desde aquí.',
-  ORDER_NOT_FOUND: 'Ese pedido no existe.',
-  VOID_NOT_ALLOWED: 'Ya no se puede anular: el bartender lo entregó o pasaron más de 15 minutos. Pide ayuda al administrador.',
-  UNDO_NOT_ALLOWED: 'Solo se puede deshacer en los primeros 10 minutos, y quien cobró. Pide ayuda a un administrador.',
+  RESERVATION_EXPIRED: 'Esa reserva ya venció (pasaron 24 h) o fue rechazada. Cóbrale como venta nueva.',
+  RESERVATION_NOT_FOUND: 'No se encontró esa reserva. Busca de nuevo a la persona.',
 };
 
 export const errText = (e: unknown, fallback = 'Algo salió mal. Intenta de nuevo.'): string => {
