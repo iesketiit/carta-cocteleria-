@@ -27,15 +27,15 @@ interface Queue {
   counts: { pending: number; accepted: number; rejected: number; paid: number };
 }
 
-// Una decisión ya tomada, para poder reenviar el WhatsApp si falló.
+// Una decisión ya tomada, para poder volver a abrir el WhatsApp.
 interface Decided {
   id: string;
   name: string;
   phone: string;
   accepted: boolean;
   radicado: string | null;
-  wa: 'sending' | 'ok' | 'error';
-  waError?: string;
+  /** true = ya se abrió el chat de WhatsApp con el mensaje. */
+  waOpened: boolean;
 }
 
 const POLL_MS = 3000;
@@ -47,18 +47,41 @@ const ago = (iso: string): string => {
   return m < 60 ? `hace ${m} min` : `hace ${Math.floor(m / 60)} h`;
 };
 
-// Respaldo si el bot falla: escribirle a mano desde el WhatsApp del curador.
-const manualLink = (d: Decided): string => {
+// El WhatsApp sale del teléfono del curador (sin bot): se abre el chat de la
+// persona con el mensaje ya escrito y el curador solo toca Enviar.
+const waLink = (d: Pick<Decided, 'name' | 'phone' | 'accepted' | 'radicado'>, city: string): string => {
   const n = d.name.trim().split(/\s+/)[0] || '';
   const text = d.accepted
-    ? `Hola ${n}, soy 403. 🖤 Tu solicitud fue aceptada. Tu radicado es: ${d.radicado}. Acércate a caja, di tu radicado y compra tu entrada en efectivo. Lleva tu cédula. No lo compartas.`
+    ? `Hola ${n}, soy 403. 🖤\n\n` +
+      `✅ Fuiste ACEPTADO en 403${city ? ' ' + city : ''}.\n\n` +
+      `Tu radicado es: *${d.radicado}*\n\n` +
+      'Acércate a caja, di tu radicado y compra tu entrada (solo efectivo). Lleva tu cédula. No compartas tu radicado.\n\n' +
+      'NO TODOS ENTRAN.'
     : `Hola ${n}, soy 403. Revisamos tu solicitud y esta vez no pudo ser aprobada. Gracias por querer ser parte.`;
-  return `https://wa.me/${d.phone}?text=${encodeURIComponent(text)}`;
+  return `https://wa.me/${d.phone.replace(/\D/g, '')}?text=${encodeURIComponent(text)}`;
+};
+
+// Pestaña abierta dentro del clic (si se abre después de esperar a la base,
+// el navegador la bloquea como ventana emergente).
+const openBlankTab = (): Window | null => {
+  const w = window.open('about:blank', '_blank');
+  if (w) {
+    w.opener = null;
+    try {
+      w.document.title = 'Abriendo WhatsApp…';
+      w.document.body.style.cssText =
+        'background:#000;color:#e8d9b5;font-family:Poppins,sans-serif;display:grid;place-items:center;height:100vh;margin:0';
+      w.document.body.textContent = 'Abriendo WhatsApp…';
+    } catch {
+      /* sin acceso al documento: no pasa nada */
+    }
+  }
+  return w;
 };
 
 // Curaduría en vivo: llegan las solicitudes de 403events.com/envivo, el
-// curador abre el IG, acepta o rechaza. Al aceptar se crea el radicado y el
-// bot se lo manda por WhatsApp.
+// curador abre el IG, acepta o rechaza. Al aceptar se crea el radicado y se
+// abre el WhatsApp del curador con el mensaje listo para enviar.
 export const Curador: React.FC<Props> = ({ event, events, eventId, onEvent, online, onBack }) => {
   const [queue, setQueue] = useState<Queue | null>(null);
   const [error, setError] = useState('');
@@ -108,46 +131,35 @@ export const Curador: React.FC<Props> = ({ event, events, eventId, onEvent, onli
     else load();
   };
 
-  const notify = async (id: string) => {
-    setDecided(list => list.map(d => (d.id === id ? { ...d, wa: 'sending', waError: undefined } : d)));
-    const { data, error: err } = await supabase.functions.invoke('envivo-notify', { body: { id } });
-    // Si la función responde con error (502, 403…), supabase-js solo dice
-    // "non-2xx": se lee el cuerpo para mostrar el motivo real.
-    let detail = (data as { error?: string } | null)?.error || '';
-    if (err && !detail) {
-      try {
-        const body = await (err as { context?: Response }).context?.json();
-        detail = body?.error || '';
-      } catch {
-        /* sin cuerpo legible */
-      }
-    }
-    const failed = err || detail;
-    setDecided(list =>
-      list.map(d =>
-        d.id === id ? { ...d, wa: failed ? 'error' : 'ok', waError: failed ? detail || err?.message || 'No se pudo enviar.' : undefined } : d
-      )
-    );
+  // Abre el chat con el mensaje y lo deja registrado como avisado.
+  const openWa = (d: Decided, win?: Window | null) => {
+    const url = waLink(d, event.city);
+    if (win) win.location.href = url;
+    else window.open(url, '_blank', 'noopener');
+    setDecided(list => list.map(x => (x.id === d.id ? { ...x, waOpened: true } : x)));
+    supabase.rpc('envivo_mark_notified', { p_id: d.id, p_error: null }).then(() => undefined);
   };
 
   const decide = async (p: Pending, accept: boolean) => {
     if (busyId) return;
     if (!accept && !confirm(`¿Rechazar a ${p.name}?`)) return;
+    // Al aceptar, el WhatsApp se abre solo con el radicado.
+    const win = accept ? openBlankTab() : null;
     setBusyId(p.id);
     const { data, error: err } = await supabase.rpc('envivo_decide', { p_id: p.id, p_accept: accept });
     setBusyId(null);
     if (err) {
+      win?.close();
       setError(errText(err));
       load();
       return;
     }
     const res = data as { radicado: string | null };
+    const d: Decided = { id: p.id, name: p.name, phone: p.phone, accepted: accept, radicado: res.radicado, waOpened: false };
     // Sale de la cola al instante.
     setQueue(q => (q ? { ...q, pending: q.pending.filter(x => x.id !== p.id) } : q));
-    setDecided(list =>
-      [{ id: p.id, name: p.name, phone: p.phone, accepted: accept, radicado: res.radicado, wa: 'sending' as const }, ...list].slice(0, 12)
-    );
-    notify(p.id);
+    setDecided(list => [d, ...list].slice(0, 12));
+    if (accept) openWa(d, win);
     load();
   };
 
@@ -239,21 +251,20 @@ export const Curador: React.FC<Props> = ({ event, events, eventId, onEvent, onli
                     {d.accepted ? '✅' : '✖️'} {d.name}
                     {d.radicado ? <span className="text-gold-soft"> · radicado {d.radicado}</span> : null}
                   </span>
-                  <span className={`text-xs shrink-0 ${d.wa === 'ok' ? 'text-emerald-300' : d.wa === 'error' ? 'text-red-300' : 'text-cream/50'}`}>
-                    {d.wa === 'ok' ? 'WhatsApp enviado' : d.wa === 'error' ? 'No se envió' : 'Enviando…'}
+                  <span className={`text-xs shrink-0 ${d.waOpened ? 'text-emerald-300' : 'text-cream/50'}`}>
+                    {d.accepted ? (d.waOpened ? 'WhatsApp abierto' : 'Falta avisar') : 'Rechazado'}
                   </span>
                 </div>
-                {d.wa === 'error' && (
-                  <div className="mt-2 flex flex-wrap gap-2 items-center">
-                    <button className="btn btn-ghost !py-1.5 text-xs" onClick={() => notify(d.id)}>
-                      Reintentar
-                    </button>
-                    <a className="btn btn-ghost !py-1.5 text-xs" href={manualLink(d)} target="_blank" rel="noopener noreferrer">
-                      <MessageCircle className="w-4 h-4" /> Escribirle a mano
-                    </a>
-                    {d.waError && <span className="text-[11px] text-red-300/80">{d.waError}</span>}
-                  </div>
-                )}
+                <div className="mt-2 flex flex-wrap gap-2 items-center">
+                  <button
+                    className={`btn ${d.accepted && !d.waOpened ? 'btn-gold' : 'btn-ghost'} !py-1.5 text-xs`}
+                    onClick={() => openWa(d)}
+                  >
+                    <MessageCircle className="w-4 h-4" />
+                    {d.accepted ? (d.waOpened ? 'Abrir WhatsApp otra vez' : 'Enviar WhatsApp') : 'Avisar por WhatsApp'}
+                  </button>
+                  {d.accepted && <span className="text-[11px] text-cream/45">Revisa que diste Enviar en WhatsApp.</span>}
+                </div>
               </div>
             ))}
           </div>
