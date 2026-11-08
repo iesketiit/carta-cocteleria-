@@ -449,6 +449,7 @@ begin
   ), '[]'::jsonb);
 end;
 $$;
+revoke all on function public.cash_summary(uuid, boolean) from public, anon;
 grant execute on function public.cash_summary(uuid, boolean) to authenticated;
 
 -- -------------------------------------------------------------------------
@@ -478,6 +479,7 @@ begin
   ), '[]'::jsonb);
 end;
 $$;
+revoke all on function public.finance_envivo_totals() from public, anon;
 grant execute on function public.finance_envivo_totals() to authenticated;
 
 -- -------------------------------------------------------------------------
