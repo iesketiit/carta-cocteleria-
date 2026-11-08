@@ -54,7 +54,8 @@ set search_path = public
 as $$
   select p.*
     from public.profiles p
-   where length(regexp_replace(coalesce(p_phone, ''), '\D', '', 'g')) >= 8
+   where p.role = 'guest'
+     and length(regexp_replace(coalesce(p_phone, ''), '\D', '', 'g')) >= 8
      and right(regexp_replace(coalesce(p.phone, ''), '\D', '', 'g'), 9)
          = right(regexp_replace(coalesce(p_phone, ''), '\D', '', 'g'), 9)
    order by (p.role = 'guest') desc, p.created_at desc
@@ -273,7 +274,13 @@ begin
     update public.envivo_requests
        set status = 'accepted', radicado = v_rad, decided_by = auth.uid(), decided_at = now()
      where id = r.id;
-    perform public.envivo_ensure_access_request(r.id, auth.uid());
+    -- Si King no pudiera guardarla, la aceptación sigue igual (la puerta
+    -- no se frena); se reintenta al cobrar.
+    begin
+      perform public.envivo_ensure_access_request(r.id, auth.uid());
+    exception when others then
+      raise warning 'envivo_ensure_access_request: %', sqlerrm;
+    end;
   else
     update public.envivo_requests
        set status = 'rejected', decided_by = auth.uid(), decided_at = now()
@@ -341,7 +348,11 @@ begin
          tier_id = p_tier_id, tier_name = v_tier->>'name', amount = v_price
    where id = r.id;
 
-  perform public.envivo_ensure_access_request(r.id, auth.uid());
+  begin
+    perform public.envivo_ensure_access_request(r.id, auth.uid());
+  exception when others then
+    raise warning 'envivo_ensure_access_request: %', sqlerrm;
+  end;
   v_ticket := public.envivo_issue_ticket(r.id);
 
   return jsonb_build_object('name', r.full_name, 'tierName', v_tier->>'name', 'amount', v_price, 'ticketId', v_ticket);
@@ -400,6 +411,45 @@ end;
 $$;
 revoke all on function public.envivo_cash_undo(uuid) from public, anon;
 grant execute on function public.envivo_cash_undo(uuid) to authenticated;
+
+-- -------------------------------------------------------------------------
+-- 4b) "Mi caja" de /caja no cuenta los cobros de /envivo (esos salen en
+--     /cobrar). Así ningún cobro aparece en dos cierres.
+-- -------------------------------------------------------------------------
+create or replace function public.cash_summary(p_event_id uuid, p_only_mine boolean default true)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+begin
+  if not public.has_staff_role('caja_entradas', p_event_id) then
+    raise exception 'NOT_AUTHORIZED' using errcode = 'P0001';
+  end if;
+  return coalesce((
+    select jsonb_agg(r order by r->>'cashier') from (
+      select jsonb_build_object(
+        'cashier', coalesce(pc.full_name, 'Sin nombre'),
+        'sales', count(*),
+        'people', sum(case when t.group_batch_id is not null then
+                        (select count(*) from public.purchased_tickets x where x.group_batch_id = t.group_batch_id and x.status <> 'rejected')
+                      else 1 end),
+        'total', sum(t.total_price),
+        'today', sum(t.total_price) filter (where t.purchase_date >= date_trunc('day', now() at time zone 'America/Guayaquil') at time zone 'America/Guayaquil')
+      ) r
+        from public.purchased_tickets t
+        left join public.profiles pc on pc.id = t.cash_collected_by
+       where t.event_id = p_event_id and t.paid_cash and t.status in ('valid', 'used')
+         and t.envivo_request_id is null
+         and (t.is_group_primary is not false)
+         and (not p_only_mine or t.cash_collected_by = auth.uid() or public.has_event_access(p_event_id))
+       group by pc.full_name
+    ) s
+  ), '[]'::jsonb);
+end;
+$$;
+grant execute on function public.cash_summary(uuid, boolean) to authenticated;
 
 -- -------------------------------------------------------------------------
 -- 5) Finanzas: los cobros de /envivo ya son entradas (purchased_tickets).

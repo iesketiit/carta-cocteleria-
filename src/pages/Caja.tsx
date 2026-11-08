@@ -151,6 +151,7 @@ export const Caja: React.FC<Props> = ({ event, events, eventId, onEvent, online,
     }
     setBusy(false);
     if (error) {
+      refreshTiers();
       const offline = error.code !== 'P0001';
       setError(
         offline
@@ -322,7 +323,7 @@ export const Caja: React.FC<Props> = ({ event, events, eventId, onEvent, online,
               {tiers.map(t => (
                 <button
                   key={t.id}
-                  disabled={t.soldOut}
+                  disabled={t.soldOut || (!!t.isGroupTier && t.available != null && t.available < (t.groupSize || 1))}
                   onClick={() => {
                     setTierId(t.id);
                     setQty(1);
