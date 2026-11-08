@@ -4,6 +4,7 @@ import { Shell } from '../components/Shell';
 import { supabase, errText } from '../lib/supabase';
 import { EventLite } from '../lib/types';
 import { money } from '../lib/format';
+import { loadTiers, Tier, tierStock } from '../lib/tiers';
 
 interface Props {
   event: EventLite;
@@ -25,14 +26,6 @@ interface Person {
   paidAt: string | null;
   paidByMe: boolean;
   canUndo: boolean;
-}
-
-interface Tier {
-  id: string;
-  name: string;
-  price: number;
-  isGroupTier?: boolean;
-  soldOut?: boolean;
 }
 
 interface Summary {
@@ -77,23 +70,17 @@ export const Cobrar: React.FC<Props> = ({ event, events, eventId, onEvent, onlin
     [event.id]
   );
 
+  const refreshTiers = useCallback(
+    () => loadTiers(event.id).then(list => setTiers(list.filter(t => !t.isGroupTier && !t.exclusive))),
+    [event.id]
+  );
+
   useEffect(() => {
-    supabase
-      .from('events')
-      .select('ticket_tiers')
-      .eq('id', event.id)
-      .maybeSingle()
-      .then(({ data }) =>
-        setTiers(
-          ((data?.ticket_tiers as Tier[]) ?? [])
-            .filter(t => !t.isGroupTier)
-            .map(t => ({ ...t, price: Number(t.price) || 0 }))
-        )
-      );
+    refreshTiers();
     loadSummary();
     setSelectedId(null);
     setLoaded(false);
-  }, [event.id, loadSummary]);
+  }, [event.id, loadSummary, refreshTiers]);
 
   // Búsqueda al escribir + refresco cada 5 s (llegan aceptados nuevos).
   useEffect(() => {
@@ -134,6 +121,7 @@ export const Cobrar: React.FC<Props> = ({ event, events, eventId, onEvent, onlin
     setBusy(false);
     if (err) {
       setError(errText(err));
+      refreshTiers();
       return;
     }
     const r = data as { name: string; tierName: string; amount: number };
@@ -142,6 +130,7 @@ export const Cobrar: React.FC<Props> = ({ event, events, eventId, onEvent, onlin
     setQuery('');
     search();
     loadSummary();
+    refreshTiers();
   };
 
   const undo = async (p: Person) => {
@@ -152,6 +141,7 @@ export const Cobrar: React.FC<Props> = ({ event, events, eventId, onEvent, onlin
       setError('');
       search();
       loadSummary();
+      refreshTiers();
     }
   };
 
@@ -167,7 +157,7 @@ export const Cobrar: React.FC<Props> = ({ event, events, eventId, onEvent, onlin
             <CheckCircle2 className="w-5 h-5" /> Cobrado {money(done.amount, event.currency)}
           </p>
           <p className="text-sm text-cream/70 mt-1">
-            {done.name} · {done.tier}. Ya puede pasar.
+            {done.name} · {done.tier}. Su entrada ya está en el sistema: en la puerta la encuentran por su nombre.
           </p>
           <button className="btn btn-ghost mt-3" onClick={() => setDone(null)}>
             Siguiente
@@ -270,10 +260,8 @@ export const Cobrar: React.FC<Props> = ({ event, events, eventId, onEvent, onlin
                   className={`p-3 rounded-xl border text-left ${tierId === t.id ? 'border-gold bg-wine/40' : 'border-gold/20 bg-black/40'} disabled:opacity-40`}
                 >
                   <p className="font-semibold">{t.name}</p>
-                  <p className="text-sm text-gold-soft">
-                    {money(t.price, event.currency)}
-                    {t.soldOut ? ' · AGOTADA' : ''}
-                  </p>
+                  <p className="text-sm text-gold-soft">{money(t.price, event.currency)}</p>
+                  <p className={`text-[11px] mt-0.5 ${t.soldOut ? 'text-red-300' : 'text-cream/50'}`}>{tierStock(t)}</p>
                 </button>
               ))}
               {tiers.length === 0 && <p className="text-sm text-cream/50">Esta ciudad no tiene localidades para cobrar.</p>}

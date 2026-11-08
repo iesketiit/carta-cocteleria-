@@ -8,11 +8,13 @@ Supabase** de 403events.com (mismos usuarios).
 | `/barra` | Cajero de barra | Elige licor (Whisky, Tequila…) o Botellas, arma el pedido, cobra (efectivo / transferencia / DeUna). Funciona **sin señal**: guarda el pedido y lo sube solo al volver la conexión. |
 | `/bartender` | Bartender | Pedidos por preparar (#número), botón *Entregado*, recetas y "Tomé otra botella". |
 | `/caja` | Caja de entradas (ej. D'VORA) | Busca a la persona **aprobada**, elige localidad, cobra en efectivo y la entrada con QR le aparece en su cuenta. |
-| `/admin` | Inventario / admin | Carta (precios y recetas), licores, carga y conteo de botellas, cierre de caja y personal. |
+| `/admin` | Inventario / admin | Carta (precios y recetas), licores, carga y conteo de botellas, cierre de caja y personal. **Descargar PDF** de la carta lista para imprimir (A4 o Carta, fondo negro o claro). |
 
 ## Puesta en marcha (una sola vez)
 
-1. **Supabase → SQL Editor:** pega todo `sql/migration-barra-caja.sql` y dale **Run**.
+1. **Supabase → SQL Editor:** pega todo `sql/migration-barra-caja.sql` y dale **Run**. Luego, en orden:
+   `sql/migration-envivo.sql` y **`sql/migration-envivo-entrada-real.sql`** (los aceptados de /envivo salen en King y
+   cada cobro crea su entrada con QR y descuenta el aforo de la localidad).
 2. **Vercel → Add New Project →** importa el repo `carta-cocteleria-`. Framework: *Vite*. No hace falta configurar nada más
    (si quieres, agrega las variables de `.env.example`).
 3. **Personal:** crea la cuenta en King → Usuarios → Crear (rol *Staff de puerta*). Luego en esta web → Inventario y carta →

@@ -25,6 +25,12 @@ const ERRORS: Record<string, string> = {
   NOTE_REQUIRED: 'Escribe el motivo del ajuste.',
   INVALID_QTY: 'Cantidad no válida.',
   RESERVATION_EXPIRED: 'Esa reserva ya venció (pasaron 24 h) o fue rechazada. Cóbrale como venta nueva.',
+  RADICADO_MISMATCH: 'El radicado no coincide. Pídele que te muestre el WhatsApp que le llegó.',
+  ALREADY_PAID: 'Esta persona ya pagó su entrada.',
+  NOT_ACCEPTED: 'Esta persona no fue aceptada por el curador.',
+  ALREADY_CHECKED_IN: 'No se puede deshacer: esa entrada ya pasó por la puerta.',
+  UNDO_NOT_ALLOWED: 'Solo quien cobró puede deshacer (10 min). Pide ayuda a un administrador.',
+  ALREADY_DECIDED: 'Otro curador ya decidió esta solicitud.',
   RESERVATION_NOT_FOUND: 'No se encontró esa reserva. Busca de nuevo a la persona.',
 };
 
