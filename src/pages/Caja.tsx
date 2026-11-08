@@ -4,6 +4,7 @@ import { Shell } from '../components/Shell';
 import { supabase, errText } from '../lib/supabase';
 import { EventLite } from '../lib/types';
 import { money, uuid } from '../lib/format';
+import { loadTiers, Tier, tierStock } from '../lib/tiers';
 
 interface Props {
   event: EventLite;
@@ -35,15 +36,6 @@ interface Person {
   reservations?: Reservation[];
 }
 
-interface Tier {
-  id: string;
-  name: string;
-  price: number;
-  isGroupTier?: boolean;
-  groupSize?: number;
-  soldOut?: boolean;
-}
-
 interface Summary {
   cashier: string;
   sales: number;
@@ -71,16 +63,13 @@ export const Caja: React.FC<Props> = ({ event, events, eventId, onEvent, online,
   const [done, setDone] = useState<{ name: string; tier: string; people: number; total: number } | null>(null);
   const [summary, setSummary] = useState<Summary[]>([]);
 
+  const refreshTiers = () => loadTiers(event.id).then(setTiers);
+
   const loadSummary = () =>
     supabase.rpc('cash_summary', { p_event_id: event.id, p_only_mine: true }).then(({ data }) => setSummary((data as Summary[]) ?? []));
 
   useEffect(() => {
-    supabase
-      .from('events')
-      .select('ticket_tiers')
-      .eq('id', event.id)
-      .maybeSingle()
-      .then(({ data }) => setTiers(((data?.ticket_tiers as Tier[]) ?? []).map(t => ({ ...t, price: Number(t.price) || 0 }))));
+    refreshTiers();
     loadSummary();
     setPerson(null);
     setResults([]);
@@ -162,6 +151,7 @@ export const Caja: React.FC<Props> = ({ event, events, eventId, onEvent, online,
     }
     setBusy(false);
     if (error) {
+      refreshTiers();
       const offline = error.code !== 'P0001';
       setError(
         offline
@@ -177,6 +167,7 @@ export const Caja: React.FC<Props> = ({ event, events, eventId, onEvent, online,
     setQuery('');
     setResults([]);
     loadSummary();
+    refreshTiers();
   };
 
   // Reserva hecha en la web ("Efectivo en local"): se cobra el valor
@@ -221,6 +212,7 @@ export const Caja: React.FC<Props> = ({ event, events, eventId, onEvent, online,
     setQuery('');
     setResults([]);
     loadSummary();
+    refreshTiers();
   };
 
   const mine = useMemo(() => summary.reduce((s, r) => s + Number(r.total || 0), 0), [summary]);
@@ -331,7 +323,7 @@ export const Caja: React.FC<Props> = ({ event, events, eventId, onEvent, online,
               {tiers.map(t => (
                 <button
                   key={t.id}
-                  disabled={t.soldOut}
+                  disabled={t.soldOut || (!!t.isGroupTier && t.available != null && t.available < (t.groupSize || 1))}
                   onClick={() => {
                     setTierId(t.id);
                     setQty(1);
@@ -344,7 +336,10 @@ export const Caja: React.FC<Props> = ({ event, events, eventId, onEvent, online,
                   <p className="text-sm text-gold-soft">
                     {money(t.price, event.currency)}
                     {t.isGroupTier ? ` · palco ${t.groupSize} personas` : ' por persona'}
-                    {t.soldOut ? ' · AGOTADA' : ''}
+                  </p>
+                  <p className={`text-[11px] mt-0.5 ${t.soldOut ? 'text-red-300' : 'text-cream/50'}`}>
+                    {tierStock(t)}
+                    {t.exclusive ? ' · exclusiva' : ''}
                   </p>
                 </button>
               ))}
@@ -356,7 +351,12 @@ export const Caja: React.FC<Props> = ({ event, events, eventId, onEvent, online,
               <p className="text-xs text-cream/60 mb-2">Cantidad de entradas</p>
               <div className="flex gap-2 flex-wrap">
                 {[1, 2, 3, 4, 5].map(n => (
-                  <button key={n} onClick={() => setQty(n)} className={`chip ${qty === n ? 'chip-on' : ''}`}>
+                  <button
+                    key={n}
+                    onClick={() => setQty(n)}
+                    disabled={tier.available != null && n > tier.available}
+                    className={`chip ${qty === n ? 'chip-on' : ''} disabled:opacity-30`}
+                  >
                     {n}
                   </button>
                 ))}

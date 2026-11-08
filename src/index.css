@@ -13,7 +13,9 @@
 
 html, body, #root {
   min-height: 100%;
-  background: #070405;
+  background:
+    radial-gradient(ellipse 90% 45% at 50% -10%, rgba(114, 47, 55, 0.28), transparent 70%) fixed,
+    #070405;
   color: #f3e7cf;
   font-family: var(--font-sans);
   -webkit-tap-highlight-color: transparent;
@@ -23,8 +25,8 @@ input, select, textarea, button { font: inherit; }
 
 .card {
   border: 1px solid rgba(201, 169, 110, 0.2);
-  background: linear-gradient(180deg, #160809 0%, #0b0405 100%);
-  border-radius: 1rem;
+  background: linear-gradient(180deg, rgba(23, 13, 14, 0.92) 0%, rgba(11, 6, 7, 0.92) 100%);
+  border-radius: 0.8rem;
 }
 .input {
   width: 100%;

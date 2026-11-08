@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Plus, Pencil, Save, X, RefreshCw, Trash2 } from 'lucide-react';
+import { Plus, Pencil, Save, X, RefreshCw, Trash2, FileDown } from 'lucide-react';
 import { Shell } from '../components/Shell';
 import { useCatalog } from '../lib/catalog';
 import { supabase, errText } from '../lib/supabase';
 import { BarItem, BarProduct, EventLite } from '../lib/types';
 import { KINDS, SPIRITS, money, spiritLabel, PAY_LABEL, ROLE_LABEL } from '../lib/format';
+import { downloadMenuPdf, MenuTheme, PaperSize } from '../lib/menuPdf';
 
 interface Props {
   event: EventLite;
@@ -54,6 +55,53 @@ export const Admin: React.FC<Props> = ({ event, events, eventId, onEvent, online
 };
 
 // ---------------------------------------------------------------- Carta
+// Carta lista para imprimir: PDF con los productos activos.
+const MenuPdfPanel: React.FC<{ event: EventLite; products: BarProduct[]; items: BarItem[] }> = ({ event, products, items }) => {
+  const [paper, setPaper] = useState<PaperSize>('a4');
+  const [theme, setTheme] = useState<MenuTheme>('negro');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+  const activeCount = products.filter(p => p.active).length;
+
+  const download = async () => {
+    setBusy(true);
+    setMsg('');
+    try {
+      await downloadMenuPdf({ event, products, items, paper, theme });
+    } catch (e) {
+      setMsg(errText(e, 'No se pudo crear el PDF. Intenta de nuevo.'));
+    }
+    setBusy(false);
+  };
+
+  return (
+    <div className="card p-4 mb-4 flex flex-wrap items-end gap-3">
+      <div className="min-w-0 mr-auto">
+        <p className="font-display text-lg">Carta para imprimir</p>
+        <p className="text-xs text-cream/55">
+          {activeCount} {activeCount === 1 ? 'producto activo' : 'productos activos'} · los inactivos no salen en el PDF.
+        </p>
+      </div>
+      <Field label="Papel">
+        <select className="input !w-auto !py-2 text-sm" value={paper} onChange={e => setPaper(e.target.value as PaperSize)}>
+          <option value="a4">A4</option>
+          <option value="letter">Carta (EE. UU.)</option>
+        </select>
+      </Field>
+      <Field label="Fondo">
+        <select className="input !w-auto !py-2 text-sm" value={theme} onChange={e => setTheme(e.target.value as MenuTheme)}>
+          <option value="negro">Negro (imprenta)</option>
+          <option value="crema">Claro (impresora de casa)</option>
+        </select>
+      </Field>
+      <button className="btn btn-gold !py-2" onClick={download} disabled={busy || activeCount === 0}>
+        <FileDown className="w-4 h-4" /> {busy ? 'Creando PDF…' : 'Descargar PDF'}
+      </button>
+      {msg && <p className="w-full text-sm text-red-300">{msg}</p>}
+    </div>
+  );
+};
+
 const emptyProduct = (): BarProduct => ({
   id: '',
   event_id: '',
@@ -230,6 +278,7 @@ const CartaTab: React.FC<{ event: EventLite; products: BarProduct[]; items: BarI
 
   return (
     <div>
+      <MenuPdfPanel event={event} products={products} items={items} />
       <div className="flex gap-2 flex-wrap items-center mb-3">
         <button className="btn btn-gold !py-2" onClick={() => setForm(emptyProduct())}>
           <Plus className="w-4 h-4" /> Nuevo producto
